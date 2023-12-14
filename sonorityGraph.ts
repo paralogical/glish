@@ -6,8 +6,11 @@ import { promises as fs } from "fs";
 /**
  * A graph with three connected subgraphs, corresponding to the parts of a syllable.
  * letters in the onset correspond to consants before the vowel.
- * letters in the vowel part are vowels
+ * letters in the vowel part are vowels (aka nucleus)
  * letters in the coda are consonants after the vowel
+ * frost ->
+ * "fr     o      st"
+ *  onset  vowel  coda
  *
  * Within each part, letters may have edges pointing to each other in that part, or to
  * a letter in the next part.
@@ -49,9 +52,7 @@ export function createSonorityGraph(
     progress(i, syllablizedPronuncations.length, "");
     i += 1;
     for (const syllable of syllables) {
-      //   console.log("syllable: ", syllable);
       const [onsetPart, nucleusPart, codaPart] = splitIntoChunks(syllable);
-      //   console.log(" > chunks: ", [onsetPart, nucleusPart, codaPart]);
       updateGraphPart("onset", graph.parts[0], onsetPart, nucleusPart?.[0]);
       updateGraphPart("nucleus", graph.parts[1], nucleusPart, codaPart?.[0]);
       updateGraphPart("coda", graph.parts[2], codaPart, STOP);
@@ -62,6 +63,10 @@ export function createSonorityGraph(
 }
 
 const sonorityGraphFile = "outputs/syllableGraph.json";
+
+/**
+ * Create sonority graph or load cached from disk
+ */
 export async function loadSonorityGraph(
   syllabilizedIpa: SyllablizedIPA
 ): Promise<SonorityGraph> {
@@ -116,7 +121,7 @@ async function generateSonorityGraph(
   return graph;
 }
 
-// go through letters and update graph part
+// Given an input syllable, go through letters and update graph part
 function updateGraphPart(
   which: "onset" | "nucleus" | "coda",
   graphPart: SonorityGraphPart,
@@ -254,7 +259,7 @@ export function getRandomSyllable(graph: SonorityGraph): Array<string> {
   let word = [];
   let next = weightedRandomChoice(graph.parts[0].get(null)!);
 
-  // track how often we use each phone, so we don't keep repeating stststs
+  // track how often we use each phone, so we don't keep repeating ststststststs
   let phoneCounts = new Map<string, number>();
 
   let currentPart = 0;
@@ -422,6 +427,7 @@ function splitIntoChunks(
   return [onset, vowel, coda];
 }
 
+// Tests
 if (require.main === module) {
   const graph = createSonorityGraph([
     ["cat", [["c", "a", "t"]]],

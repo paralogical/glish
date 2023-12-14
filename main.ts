@@ -39,16 +39,6 @@ async function main() {
     wordSet.set(parts.flatMap((p) => p.join("")).join(""), parts);
   }
 
-  // const variantTest = (word: string) => {
-  //   console.log(
-  //     word,
-  //     findVariants(wordSet, syllabilizedIpa.find(([name]) => name === word)![1])
-  //   );
-  // };
-  // variantTest("jump");
-  // variantTest("bubble");
-  // return;
-
   const randomSyllablesWithVariations = new Map(
     JSON.parse(
       await fs.readFile(
@@ -83,10 +73,6 @@ async function main() {
     const variantHash = hashForVariants(data.variations);
     variantSubsets[variantHash].push(data);
   }
-  // for (const [key, value] of Object.entries(variantSubsets)) {
-  //   console.log(key, value.length);
-  // }
-  // return;
 
   let assignResults: Array<boolean> = [];
   let assignSuccesses = 0;
@@ -189,9 +175,9 @@ async function main() {
   }
   console.log(
     `${assignMethod.alreadyOneSyllable} / ${syllabilizedIpa.length} words already one syllable ` +
-    `(${oneSigFig(
-      (100 * assignMethod.alreadyOneSyllable) / syllabilizedIpa.length
-    )}%)`
+      `(${oneSigFig(
+        (100 * assignMethod.alreadyOneSyllable) / syllabilizedIpa.length
+      )}%)`
   );
   console.log(
     `${assignMethod.singleSyllableVariant} additional variants from single-syllable words`
@@ -235,9 +221,6 @@ async function main() {
 
       const variants = findVariants(wordSet, sylls);
       const variantHash = hashForVariants(variants);
-      // if (i > 200) {
-      //   return;
-      // }
       if (variantHash !== "0000") {
         const candidates: Array<[RandomSyllableInfo, number, number]> = [];
         // TODO: we could also try other variant subsets,
@@ -337,10 +320,6 @@ async function main() {
     }
     i += 1;
 
-    // if (i > 10_000) {
-    //   break; // early exit for testing
-    // }
-
     // We tried to assign words with variants first. But if that process failed,
     // we may have left it unassigned. We should assign it like normal.
     // But any words that are already assigned we can safely skip (we know it's because they're from variants)
@@ -422,7 +401,8 @@ async function main() {
   console.log(); // last progress bar printed `\r`, newline to leave it
 
   console.log(
-    `Assigned ${assignResults.filter(Boolean).length} words out of ${multiSyllable.length
+    `Assigned ${assignResults.filter(Boolean).length} words out of ${
+      multiSyllable.length
     }`
   );
   const [totalSyllables, newTotalSyllables] = [...assignments.values()]
@@ -514,7 +494,7 @@ function scoreForRandomSyllable(
   return score;
 }
 
-type VariantHash = string; // 001010
+type VariantHash = string; // 0010
 /** Encode a set of variants as a string to look up in a table
  *  e.g. {plural: true, gerund: true} -> '1010'
  */

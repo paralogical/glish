@@ -25,6 +25,7 @@ async function getWordsByFrequency(): Promise<Array<string>> {
   return words.slice(0, 60000);
 }
 
+// CMU dict gives input as ARPABET, similar to IPA
 const APRABET_TO_IPA: { [key: string]: string } = {
   AA: "ɑ", // ɑ or ɒ
   AE: "æ",
@@ -81,7 +82,7 @@ const APRABET_TO_IPA: { [key: string]: string } = {
 };
 
 /**
- * Ordered word ->  syllable arrays
+ * Frequency ordered words ->  syllable arrays
  * very -> [ [v, ɛ], [ɹ, i] ]
  * */
 export type SyllablizedIPA = Array<[string, Array<Array<string>>]>;
@@ -134,7 +135,6 @@ async function generatedSyllabilizedIpa(): Promise<SyllablizedIPA> {
         )
     );
     const word = wordUpper.toLowerCase();
-    // console.log(" > ", word, "=", syllables);
     ipaSyllables[word] = syllables;
   }
 
@@ -176,18 +176,6 @@ export async function loadSyllabalizedPronuncations(): Promise<
 > {
   const syllabilizedIpa = await loadSyllabilizedIpa();
   const graph = await loadSonorityGraph(syllabilizedIpa);
-
-  // const cases = [["b", "l", "u", "l", "b"]];
-  // for (const word of cases) {
-  //   const result = generateSyllableAlternatives(
-  //     word,
-  //     graph,
-  //     new Map(),
-  //     new Set()
-  //   );
-  //   console.log(">> ", word, result);
-  // }
-  // return;
 
   await fs.writeFile(
     "ui/public/syllableGraphDisplayData.json",
@@ -253,7 +241,7 @@ export type AlternativesForSyllable = {
   [key in AlternativeCategory]?: Array<string>;
 };
 export const alternants: { [key in AlternativeCategory]: string } = {
-  plural: "z", // bubblez
+  plural: "z", // bubbles
   gerund: "ŋ", //bubbing
   past: "d", // bubbled
   actor: "ɹ", // bubbler

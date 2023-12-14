@@ -1,5 +1,5 @@
 {
-  "name": "monosyllable",
+  "name": "glish",
   "version": "1.0.0",
   "description": "Goal: Make a version of English where every word is only one syllable",
   "main": "main.ts",

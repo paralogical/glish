@@ -17,6 +17,10 @@ main.ts -> load IPA syllables and generate new monosyllabic version of all words
 sonorityGraph.ts -> data structure that helps generate new syllables following sonority sequencing.
 respellIPA.ts -> convert IPA back into "readable" latin alphabet.
 
-To run,
+To run code to generate Glish language mapping,
 `ts-node syllablize.ts` to generate outputs/syllablizedIPA.json + syllableGraph + big list of randomly generated syllables
 `ts-node main.ts` to generate outputs/monosyllabic.json & other monosyllabic results
+
+To run UI,
+`cd ui`
+`npm run dev`
