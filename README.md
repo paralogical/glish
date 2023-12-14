@@ -6,25 +6,13 @@ Inputs:
 
 - words by frequency (optimize monosyllabification for more common words)
   inputs/word_frequency.txt
-- words split into syllables (only source of syllables is on regular words, not IPA)
-  inputs/Syllables.txt
-- words with IPA pronunciations (monosyllabification based on pronunciation)
-  from https://github.com/open-dict-data/ipa-dict/tree/master/data
+- words with pronunciations and split by syllables (CMU Dict syllablized)
   Note: multiple valid pronunciations for any given word,
   but all American english
-  inputs/en_US_IPA.json
 
 Stages:
 
-1. take inputs, produce words split into IPA syllables order by frequency
-   business 74th most used word
-   business = busi-ness syllabification
-   business = bɪznɪs
-   output bɪz|nɪs
-   writes to outputs/syllabilizedIPA.json
-2. Evaluate syllabification
-3. Take syllablized IPA and use multiple strategies to generate monosyllabic form
-   one-syllable words stay the same
-4. Evaluate monosyllabic values 1-5.
-   Remember evaluations to converge on good test cases
-5. Small UI to translate text into monosyllabized
+syllablize.ts -> convert CMU dict to JSON mapping of word -> IPA split by syllables
+main.ts -> load IPA syllables and generate new monosyllabic version of all words
+sonorityGraph.ts -> data structure that helps generate new syllables following sonority sequencing.
+respellIPA.ts -> convert IPA back into "readable" latin alphabet.

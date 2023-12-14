@@ -10,7 +10,7 @@ async function main() {
   // const syllablizedPronuncations = await loadSyllabalizedPronuncations();
   // just use cached version
   const syllablizedPronuncations = JSON.parse(
-    await fs.readFile("./outputs/syllablizedIPA2.json", {
+    await fs.readFile("./outputs/syllablizedIPA.json", {
       encoding: "utf-8",
     })
   ) as Array<[string, Array<Array<string>>]>;
@@ -118,6 +118,10 @@ async function main() {
         }
         if (hasAny) {
           candidates.push([randomSyll, score]);
+          if (score === 10 * randomSyll.length) {
+            // early exit: we found a syllable that got the highest possible score! go for it!
+            break;
+          }
         }
       }
       if (candidates.length > 0) {

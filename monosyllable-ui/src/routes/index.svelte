@@ -3,17 +3,6 @@
 
   import * as mySampleText from "./sampleText";
 
-  //   let text = "Hello, world! Multiple things are happening to me...";
-  //   let text = `According to all known laws
-  // of aviation,
-  // there is no way a bee
-  // should be able to fly.
-  // Its wings are too small to get
-  // its fat little body off the ground.
-  // The bee, of course, flies anyway
-  // because bees don't care
-  // what humans think is impossible.`;
-  //   let text = "hello world";
   let text = mySampleText.sampleText as string;
 
   $: convertedWords = text.split(/[ \n\t]/).map((word) => {
@@ -49,7 +38,10 @@
   </div>
   <div>
     <span class="header">
-      <h1>Monosyllabic result</h1>
+      <div>
+        <h1>Monosyllabic result</h1>
+        <button>Copy</button>
+      </div>
       <div class="legend">
         <span
           ><span class="translated mono">bold</span>=multi-syllable word</span
@@ -86,6 +78,7 @@
   .header {
     display: flex;
     justify-content: space-between;
+    margin: 30px 0;
   }
 
   .input {

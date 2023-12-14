@@ -16,7 +16,7 @@ const START = undefined;
 // undefined as next letter means stop
 // undefined as letter (key in map) means start. (only for onset)
 // undefined -> [undefined, count] means how often this graph part is skipped (no onset)
-type SonorityGraphPart = Map<
+export type SonorityGraphPart = Map<
   string | typeof START,
   Array<[string | typeof STOP, number]>
 >;
