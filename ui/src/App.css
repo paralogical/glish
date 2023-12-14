@@ -13,9 +13,48 @@ textarea {
   padding: 2em;
 }
 
-.root {
+.App {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
     Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+
+  display: grid;
+  grid-template-columns: 50% 50%;
+  grid-template-rows: min-content min-content 1fr;
+  gap: 20px 20px;
+
+  width: min(1000px, 90vw);
+}
+
+.glish-arrow {
+  position: absolute;
+  left: -2ch;
+}
+
+@media screen and (max-width: 600px) {
+  .App {
+    grid-template-columns: 100%;
+    grid-template-rows: min-content min-content 1fr;
+  }
+  textarea.input {
+    height: 250px;
+  }
+
+  .glish-arrow {
+    position: static;
+  }
+  h1 {
+    margin: 5px;
+  }
+}
+
+textarea {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+}
+
+@font-face {
+  font-family: "Virgil";
+  src: url("Virgil.woff2") format("woff2");
 }
 
 .legend {
@@ -23,14 +62,22 @@ textarea {
   display: flex;
   flex-direction: column;
 }
+.english-input {
+  width: 100%;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 30px;
+}
+
+h1 {
+  font-family: Virgil;
+  margin-bottom: 10px;
 }
 
 .input {
-  width: 500px;
+  /* width: 500px; */
   height: 1000px;
   max-height: 60vh;
 }
@@ -40,10 +87,11 @@ textarea {
   flex-direction: row;
   gap: 1ch;
   flex-wrap: wrap;
+  height: min-content;
 }
 .input,
 .result {
-  font-size: 16pt;
+  font-size: 18pt;
 }
 
 .contain {
@@ -86,4 +134,5 @@ textarea {
   display: flex;
   flex-direction: row;
   gap: 10px;
+  margin-block: 10px;
 }

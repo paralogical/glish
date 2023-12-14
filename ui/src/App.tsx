@@ -114,88 +114,79 @@ function Editor({ monosyllabic }: { monosyllabic: MonosyllabicData }) {
 
   return (
     <div className="App">
-      <div className="root leftright">
-        <div>
-          <h1>English</h1>
-          <textarea
-            value={content}
-            className="input"
-            onChange={(e) => setContent(e.target.value)}
-          />
-        </div>
-        <div>
-          <span className="header">
-            <div>
-              <h1 style={{ position: "relative" }}>
-                <span style={{ position: "absolute", left: "-2ch" }}>
-                  &rarr;
+      <h1>English</h1>
+      <h1 style={{ position: "relative" }}>
+        <span className="glish-arrow">&rarr;</span>
+        Glish
+      </h1>
+
+      <div className="converted-byline">
+        <a href="https://www.youtube.com/@paralogical8914">Watch the video</a>
+      </div>
+
+      <div className="converted-byline">
+        <span>
+          {convertedWords.syllablesRemoved} syllables removed (
+          {convertedWords.totalSyllables === 0
+            ? 0
+            : oneSigFig(
+                (100 * convertedWords.syllablesRemoved) /
+                  convertedWords.totalSyllables
+              )}
+          %)
+        </span>
+        <button
+          onClick={() => {
+            const toCopy = convertedWords.converted
+              .map((info) => (info.kind === "mono" ? info.mono : info.orig))
+              .join(" ");
+            navigator.clipboard.writeText(toCopy);
+            setShowCopied(true);
+          }}
+        >
+          Copy Monosyllabic
+        </button>
+        {showCopied ? <span>Copied!</span> : null}
+      </div>
+
+      <textarea
+        value={content}
+        className="input"
+        onChange={(e) => setContent(e.target.value)}
+      />
+
+      <div className="result">
+        {convertedWords.converted.map(({ kind, mono, orig }) => {
+          switch (kind) {
+            case "mono":
+              return (
+                <span className="contain">
+                  <span className={`translated ${kind}`}>{mono ?? orig}</span>
+                  <span className="orig">{orig}</span>
                 </span>
-                Glish
-              </h1>
-              <div className="converted-byline">
-                <span>
-                  {convertedWords.syllablesRemoved} syllables removed (
-                  {convertedWords.totalSyllables === 0
-                    ? 0
-                    : oneSigFig(
-                        (100 * convertedWords.syllablesRemoved) /
-                          convertedWords.totalSyllables
-                      )}
-                  %)
-                </span>
-                <button
-                  onClick={() => {
-                    const toCopy = convertedWords.converted
-                      .map((info) =>
-                        info.kind === "mono" ? info.mono : info.orig
-                      )
-                      .join(" ");
-                    navigator.clipboard.writeText(toCopy);
-                    setShowCopied(true);
-                  }}
-                >
-                  Copy Monosyllabic
-                </button>
-                {showCopied ? <span>Copied!</span> : null}
-              </div>
-            </div>
-            <div className="legend">
-              <span>
-                <span className="translated mono">bold</span>=multi-syllable
-                word
-              </span>
-              <span>
-                <span className="translated oneSyllable">plain</span>=already
-                mono-syllable word
-              </span>
-              <span>
-                <span className="translated unknown">red</span>=unknown word
-              </span>
-            </div>
-          </span>
-          <div className="result">
-            {convertedWords.converted.map(({ kind, mono, orig }) => {
-              switch (kind) {
-                case "mono":
-                  return (
-                    <span className="contain">
-                      <span className={`translated ${kind}`}>
-                        {mono ?? orig}
-                      </span>
-                      <span className="orig">{orig}</span>
-                    </span>
-                  );
-                case "unknown":
-                case "alreadyOneSyllable":
-                  return <span className={`translated ${kind}`}>{orig}</span>;
-                case "whitespace":
-                  return null;
-                case "newline":
-                  return <span className={`translated ${kind}`}>{orig}</span>;
-              }
-            })}
-          </div>
-        </div>
+              );
+            case "unknown":
+            case "alreadyOneSyllable":
+              return <span className={`translated ${kind}`}>{orig}</span>;
+            case "whitespace":
+              return null;
+            case "newline":
+              return <span className={`translated ${kind}`}>{orig}</span>;
+          }
+        })}
+      </div>
+
+      <div className="legend">
+        <span>
+          <span className="translated mono">bold</span>=multi-syllable word
+        </span>
+        <span>
+          <span className="translated oneSyllable">plain</span>=already
+          mono-syllable word
+        </span>
+        <span>
+          <span className="translated unknown">red</span>=unknown word
+        </span>
       </div>
     </div>
   );
