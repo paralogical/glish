@@ -4,8 +4,9 @@ import {
   createSonorityGraph,
   getRandomSyllable,
   printGraph,
+  SonorityGraph,
 } from "./sonorityGraph";
-import { pad } from "./util";
+import { pad, progress } from "./util";
 import * as util from "util";
 
 /*
@@ -642,10 +643,6 @@ async function loadSyllables(): Promise<Map<string, Array<string>>> {
  * return map like 'dictionary' => "ˈdɪkʃənəɹi"
  */
 async function loadPronunciations(): Promise<Map<string, string>> {
-  // const content = await fs.readFile("./inputs/pronunciations.json", {
-  //   encoding: "utf-8",
-  // });
-  // const data: { [key: string]: Array<string> } = JSON.parse(content);
   const content = await fs.readFile("./inputs/en_US_IPA.txt", {
     encoding: "utf-8",
   });
@@ -696,79 +693,169 @@ async function getWordsByFrequency(): Promise<Array<string>> {
   return words.slice(0, 60000);
 }
 
+const APRABET_TO_IPA: { [key: string]: string } = {
+  AA: "ɑ", // ɑ or ɒ
+  AE: "æ",
+  AH: "ʌ",
+  AO: "ɔ",
+  AW: "aʊ",
+  AX: "əɹ", // ɚ
+  AXR: "ə",
+  AY: "aɪ",
+  EH: "ɛ",
+  ER: "ɛɹ", // ɝ
+  EY: "eɪ",
+  IH: "ɪ",
+  IX: "ɨ",
+  IY: "i",
+  OW: "oʊ",
+  OY: "ɔɪ",
+  UH: "ʊ",
+  UW: "u",
+  UX: "ʉ",
+  //
+  B: "b",
+  CH: "tʃ",
+  D: "d",
+  DH: "ð",
+  DX: "ɾ",
+  EL: "l̩",
+  EM: "m̩",
+  EN: "n̩",
+  F: "f",
+  G: "ɡ",
+  HH: "h",
+  H: "h",
+  JH: "dʒ",
+  K: "k",
+  L: "l",
+  M: "m",
+  N: "n",
+  NG: "ŋ",
+  NX: "ɾ̃",
+  P: "p",
+  Q: "ʔ",
+  R: "ɹ",
+  S: "s",
+  SH: "ʃ",
+  T: "t",
+  TH: "θ",
+  V: "v",
+  W: "w",
+  WH: "ʍ",
+  Y: "j",
+  Z: "z",
+  ZH: "ʒ",
+};
+
 /**
  * Construct ordered list of syllablized pronunciations
  * map of word -> IPA split into syllables by |
  * ordered by usage of the word (common words first)
+ * ['business', [ ["b", "ɪ", "z"], ["n", "ʌ", "s"] ]]
+ * words not in frequency list are appended to the end
  */
 export async function loadSyllabalizedPronuncations(): Promise<
-  Array<[string, string]>
+  Array<[string, Array<Array<string>>]>
 > {
   const wordsByFrequency = await getWordsByFrequency();
   const wordSet = new Set(wordsByFrequency);
 
   console.log("loaded %d frequencies", wordSet.size);
 
-  const syllables = await loadSyllables();
-  // console.log(syllables);
+  const cmu_file = await fs.readFile("inputs/cmudict.0.6-syl.txt", "utf-8");
+  const lines = cmu_file.split("\n");
+  console.log(`converting ${lines.length} CMU words into IPA`);
+  let i = 0;
+  const ipaSyllables: { [key: string]: Array<Array<string>> } = {};
+  for (const line of lines) {
+    if (line.startsWith("#")) {
+      continue;
+    }
+    i += 1;
+    progress(i, lines.length, "");
+    if (line.trim() === "") continue;
+    const [wordUpper, sounds] = line.split("  ", 2);
+    if (/.*\(\d\)$/.test(wordUpper)) continue;
+    const syllables = sounds.split(".").map((syll) =>
+      syll
+        .trim()
+        .split(" ")
+        .map(
+          (phone) =>
+            APRABET_TO_IPA[/^([A-Z]+)\d*$/.exec(phone)![1]] ??
+            console.log("couldn't find phone ", phone)
+        )
+    );
+    const word = wordUpper.toLowerCase();
+    // console.log(" > ", word, "=", syllables);
+    ipaSyllables[word] = syllables;
+  }
 
-  console.log("loaded %d syllablizations", syllables.size);
+  console.log();
 
-  const pronunciations = await loadPronunciations();
-  console.log("loaded %d pronunciations", pronunciations.size);
+  console.log("sorting by frequency...");
 
-  // const pronunciationsForWord = await getPronuncationsMap(wordSet);
+  const orderedResult: Array<[string, Array<Array<string>>]> = [];
+  // insert syllablized one by one
+  for (const word of wordsByFrequency) {
+    const found = ipaSyllables[word];
+    if (found) {
+      orderedResult.push([word, found]);
+      delete ipaSyllables[word];
+    }
+  }
+  // anything left in ipaSyllables we don't have a frequency for, but we still want to use
+  orderedResult.push(...Object.entries(ipaSyllables));
 
-  // list of words in order of frequency, including their pronunciation and syllablization
-  const orderedWordsWithPronunciations = wordsByFrequency
-    .map((word): [string, Array<string>, string] | null => {
-      const syllable = syllables.get(word) ?? [word];
-
-      const pronunciation = pronunciations.get(word);
-      if (pronunciation == null) return null;
-
-      return [word, syllable, pronunciation];
-    })
-    .filter(Boolean);
-
-  // console.log(orderedWordsWithPronunciations);
-  console.log(
-    "found  %d words with syllables and pronunciations",
-    orderedWordsWithPronunciations.length
-  );
-
-  console.log("constructing syllablized pronunciations...");
-  const t1 = new Date().valueOf();
-  const syllablizedPronuncations = constuctSyllablizedPronunciations(
-    orderedWordsWithPronunciations
-    // orderedWordsWithPronunciations.slice(0, 500)
-  );
-  console.log("completed in %dms", new Date().valueOf() - t1);
+  console.log("writing syllabized ipa result...");
 
   await fs.writeFile(
     "outputs/syllablizedIPA.json",
-    JSON.stringify(Object.fromEntries(syllablizedPronuncations), undefined, 2)
+    JSON.stringify(orderedResult, undefined, 2)
   );
-  console.log(
-    "wrote syllablization file with %d syllablized pronunciations",
-    syllablizedPronuncations.length
-  );
-  evaluateSyllablization(syllablizedPronuncations, syllables);
 
-  console.log("create graph");
+  console.log("creating sonority graph");
+  const graph = createSonorityGraph(orderedResult);
+  console.log();
 
-  const graph = createSonorityGraph(syllablizedPronuncations);
-
-  for (var i = 0; i < 20; i++) {
-    console.log("random syllable: ", getRandomSyllable(graph));
-  }
+  console.log("creating lots of random syllables");
+  await bulkGenerateSyllables(graph);
 
   console.log("-----------");
 
   await fs.writeFile("outputs/syllableGraph.graphviz", printGraph(graph));
   console.log("wrote graphviz");
 
-  return syllablizedPronuncations;
+  return orderedResult;
+}
+
+async function bulkGenerateSyllables(graph: SonorityGraph) {
+  const syllables = new Map<string, Array<string>>();
+
+  // many attempts with be repeats; 100 million typically generates ~190,000 syllables
+  // which is enough to cover our dictionary
+  let N = 100000000;
+  for (let j = 0; j < N; j++) {
+    const s = getRandomSyllable(graph);
+    const joined = s.join("");
+    if (syllables.has(joined)) {
+      continue;
+    }
+    syllables.set(joined, s);
+    if (j % 100 === 0) {
+      process.stdout.write("\u001b[2K");
+      progress(j, N, joined);
+    }
+  }
+  console.log();
+  console.log(`created ${syllables.size} unique syllables`);
+  console.log("writing random syllables");
+
+  await fs.writeFile(
+    "outputs/random_generated_syllables.json",
+    JSON.stringify([...syllables.entries()], undefined, 2)
+  );
 }
 
 // Tests / standalone

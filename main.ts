@@ -4,100 +4,171 @@ import {
   createSonorityGraph,
   getRandomSyllableFromPallete,
 } from "./sonorityGraph";
-
-type IPA = string;
-
-type Context = {
-  monosyllabizedWordsList: Array<
-    [
-      /* original word in english */ string,
-      /* original pronunciation */ IPA,
-      /* monosyllabic pronunciation */ IPA
-    ]
-  >; // words in IPA so far in order
-  monosyllabizedWordsSet: Set<IPA>; // words so far, to check for inclusion / already exists
-};
+import { oneSigFig, progress } from "./util";
 
 async function main() {
   // const syllablizedPronuncations = await loadSyllabalizedPronuncations();
   // just use cached version
   const syllablizedPronuncations = JSON.parse(
-    await fs.readFile("./outputs/syllablizedIPA.json", {
+    await fs.readFile("./outputs/syllablizedIPA2.json", {
       encoding: "utf-8",
     })
-  ) as { [key: string]: string };
+  ) as Array<[string, Array<Array<string>>]>;
 
-  const entries = Object.entries(syllablizedPronuncations);
-  const oneSyllable = entries.filter(([word, value]) => !value.includes("|"));
-  const multiSyllable = entries.filter(([word, value]) => value.includes("|"));
+  const oneSyllable = syllablizedPronuncations.filter(
+    ([word, syllalbles]) => syllalbles.length === 1
+  );
+  const multiSyllable = syllablizedPronuncations.filter(
+    ([word, syllalbles]) => syllalbles.length > 1
+  );
 
-  const seen = new Set();
-  const assignments = new Map<string, string>();
+  const seen = new Set<string>();
+  const assignments = new Map<string, Array<string>>();
 
   for (const [word, syll] of oneSyllable) {
-    seen.add(syll);
+    seen.add(syll.join(""));
     // assignments.set(word, syll);
   }
 
   // TODO; we could cache this graph instead of remaking it here
-  const graph = createSonorityGraph(entries);
+  console.log("generating sonority graph...");
+  const graph = createSonorityGraph(syllablizedPronuncations);
 
-  let assignSuccesses = [];
+  const randomSyllables = new Map(
+    JSON.parse(
+      await fs.readFile("./outputs/random_generated_syllables.json", {
+        encoding: "utf-8",
+      })
+    ) as Array<[string, Array<string>]>
+  );
 
-  for (const [word, syllsStr] of multiSyllable) {
-    const sylls = syllsStr.split("|");
-    const firstunused = sylls.find((syll) => !seen.has(syll));
-    if (firstunused == null) {
-      // try random palette
+  let assignResults: Array<boolean> = [];
+  let assignSuccesses = 0;
+  let assignFails = 0;
+  let directAssigns = 0;
+  let graphAssigns = 0;
+  let randomFancyAssigns = 0;
+  let randomDumbAssigns = 0;
+
+  const assign = (word: string, value: Array<string>) => {
+    const joined = value.join("");
+    seen.add(joined);
+    assignments.set(word, value);
+    assignSuccesses++;
+    assignResults.push(true);
+    randomSyllables.delete(joined);
+    // console.log("✅ assigned %s -> %s", word, generatedSyl);
+  };
+
+  console.log("assigning monosyllabic values...");
+  let i = 0;
+  for (const [word, sylls] of multiSyllable) {
+    // print progress
+    // no need to print after every word
+    if (i % 100 === 0) {
+      progress(
+        i,
+        multiSyllable.length,
+        `${i}/${multiSyllable.length}.    ${directAssigns} direct, ${graphAssigns} graph, ${randomFancyAssigns} fancy, ${randomDumbAssigns} dumb, ${assignFails} fails`
+      );
+    }
+    i += 1;
+
+    // try to use any syllable directly
+    {
+      const firstunused = sylls.find((syll) => !seen.has(syll.join("")));
+      if (firstunused != null) {
+        directAssigns++;
+        assign(word, firstunused);
+        continue;
+      }
+    }
+
+    // try random palette
+    {
       let assiendWithRandom = false;
       for (let i = 0; i < 1000; i++) {
-        const generatedSyl = getRandomSyllableFromPallete(
-          graph,
-          sylls.join("")
-        );
-        if (generatedSyl && !seen.has(generatedSyl)) {
-          seen.add(generatedSyl);
-          assignments.set(word, generatedSyl);
-          assignSuccesses.push(true);
-          console.log("✅ assigned %s -> %s", word, generatedSyl);
+        const generatedSyl = getRandomSyllableFromPallete(graph, sylls.flat());
+        if (generatedSyl && !seen.has(generatedSyl.join(""))) {
+          graphAssigns++;
+          assign(word, generatedSyl);
           assiendWithRandom = true;
+          break;
         }
       }
       if (assiendWithRandom) {
         continue;
       }
-
-      console.log("❌ couldnt assign %s, theyre all taken", word);
-      assignments.set(word, `#${word}#`);
-      assignSuccesses.push(false);
-    } else {
-      seen.add(firstunused);
-      assignments.set(word, firstunused);
-      console.log("✅ assigned %s -> %s", word, firstunused);
-      assignSuccesses.push(true);
     }
-  }
 
-  console.log(assignments);
-  const first500Success =
-    (100 * assignSuccesses.slice(0, 500).filter(Boolean).length) / 500;
-  const first5000Success =
-    (100 * assignSuccesses.slice(0, 5000).filter(Boolean).length) / 5000;
-  const first50000Success =
-    (100 * assignSuccesses.slice(0, 50000).filter(Boolean).length) / 50000;
-  const totalSuccess =
-    (100 * assignSuccesses.filter(Boolean).length) / assignSuccesses.length;
-  console.log("first 500 success rate:", first500Success);
-  console.log("first 5000 success rate:", first5000Success);
-  console.log("first 50000 success rate:", first50000Success);
-  console.log("total success rate:", totalSuccess);
+    // find a random syllable to use from pregenerated list
+    {
+      let candidates: Array<[Array<string>, number]> = [];
+      const phones = new Set(sylls.flat());
+      for (const [joined, randomSyll] of randomSyllables.entries()) {
+        let score = 0;
+        let hasAny = false;
+        for (const p of randomSyll) {
+          if (phones.has(p)) {
+            hasAny = true;
+            score += 10;
+          } else {
+            score -= 5;
+          }
+        }
+        if (hasAny) {
+          candidates.push([randomSyll, score]);
+        }
+      }
+      if (candidates.length > 0) {
+        let best: [Array<string> | undefined, number] = [undefined, -Infinity];
+        for (const cand of candidates) {
+          if (cand[1] > best[1]) {
+            best = cand;
+          }
+        }
+
+        randomFancyAssigns++;
+        assign(word, best[0]!);
+        continue;
+      }
+
+      // if we didn't find a decent match, just use the first available
+      if (randomSyllables.size > 0) {
+        const [rand] = randomSyllables;
+        randomDumbAssigns++;
+        assign(word, rand[1]);
+
+        continue;
+      }
+    }
+
+    // fallback -> we failed to assign anything
+    // console.log("❌ couldnt assign %s, theyre all taken", word);
+    assignments.set(word, ["#", ...word, "#"]);
+    assignFails++;
+    assignResults.push(false);
+  }
+  console.log(); // last progress bar printed `\r`, newline to leave it
+
+  console.log(
+    `Assigned ${assignResults.filter(Boolean).length} words out of ${
+      multiSyllable.length
+    }`
+  );
+  const firstNth = (n: number) =>
+    (100 * assignResults.slice(0, n).filter(Boolean).length) / n;
+  console.log("first 500 success rate:", oneSigFig(firstNth(500)));
+  console.log("first 5000 success rate:", oneSigFig(firstNth(5000)));
+  console.log("first 15000 success rate:", oneSigFig(firstNth(15000)));
 
   const monosyllabicResult: { [key: string]: string } = {};
 
-  for (const [word, syll] of entries) {
-    const mono = syll.includes("|") ? assignments.get(word) : syll;
+  for (const [word, sylls] of syllablizedPronuncations) {
+    const mono = sylls.length > 1 ? assignments.get(word) : sylls[0];
     if (mono) {
-      monosyllabicResult[word] = mono;
+      monosyllabicResult[word] = mono.join("");
+      // TODO: we should do the respell before joining
     }
   }
 

@@ -1,9 +1,10 @@
 // 3 connected subgraphs
 // within each part, letters are connected together
 import * as util from "util";
+import { progress } from "./util";
 
 // there are multiple edges
-type SonorityGraph = {
+export type SonorityGraph = {
   // onset, nucleus, coda
   parts: [SonorityGraphPart, SonorityGraphPart, SonorityGraphPart];
 };
@@ -25,17 +26,17 @@ type SonorityGraphPart = Map<
 // coda -> post-vowel consonants
 
 export function createSonorityGraph(
-  syllablizedPronuncations: Array<[string, string]>
+  syllablizedPronuncations: Array<[string, Array<Array<string>>]>
 ): SonorityGraph {
   const graph: SonorityGraph = {
     parts: [new Map(), new Map(), new Map()],
   };
 
-  for (const [word, syllabification] of syllablizedPronuncations.slice(
-    0
-    // 100
-  )) {
-    for (const syllable of syllabification.split("|")) {
+  let i = 0;
+  for (const [word, syllables] of syllablizedPronuncations) {
+    progress(i, syllablizedPronuncations.length, "");
+    i += 1;
+    for (const syllable of syllables) {
       //   console.log("syllable: ", syllable);
       const [onsetPart, nucleusPart, codaPart] = splitIntoChunks(syllable);
       //   console.log(" > chunks: ", [onsetPart, nucleusPart, codaPart]);
@@ -52,7 +53,8 @@ export function createSonorityGraph(
 function updateGraphPart(
   which: "onset" | "nucleus" | "coda",
   graphPart: SonorityGraphPart,
-  letters: string | undefined,
+  letters: Array<string>,
+  // first phone of next part
   nextPart: string | undefined
 ) {
   // initial part of graph
@@ -177,13 +179,13 @@ function weightedRandomChoice<T>(a: Array<[T, number]>): T {
   return a[i][0];
 }
 
-export function getRandomSyllable(graph: SonorityGraph) {
-  let word = "";
+export function getRandomSyllable(graph: SonorityGraph): Array<string> {
+  let word = [];
   let next = weightedRandomChoice(graph.parts[0].get(undefined)!);
 
   let currentPart = 0;
   while (next && currentPart < 3) {
-    word += next;
+    word.push(next);
     let graphPart;
     if (graph.parts[currentPart].has(next)) {
       graphPart = graph.parts[currentPart];
@@ -199,9 +201,9 @@ export function getRandomSyllable(graph: SonorityGraph) {
 
 export function getRandomSyllableFromPallete(
   graph: SonorityGraph,
-  pallete: string
-) {
-  let word = "";
+  pallete: Array<string>
+): Array<string> | undefined {
+  let word = [];
   // TODO: remove from palette as you usefrom a graph,
   // so kstrtruhr is not possible (repeated t and r in onset)
   const randomTilInPalete = (from: Array<[string | undefined, number]>) => {
@@ -220,7 +222,7 @@ export function getRandomSyllableFromPallete(
 
   let currentPart = 0;
   while (next && currentPart < 3) {
-    word += next;
+    word.push(next);
     let graphPart;
     if (graph.parts[currentPart].has(next)) {
       graphPart = graph.parts[currentPart];
@@ -234,58 +236,136 @@ export function getRandomSyllableFromPallete(
   return word;
 }
 
-const consonantsOrExtra = "bcdfghjklmnpqrstvwxzʒ̥ʰ͡(ɹ)ðʃθɡŋʍɫ˨ʔɾɵɯ";
-const vowels = "aɪəɔʊɛjɜːuʌɒoɑæei";
+// const consonantsOrExtra = new Set("bcdfghjklmnpqrstvwxzʒ̥ʰ͡(ɹ)ðʃθɡŋʍɫ˨ʔɾɵɯ");
+// const vowels = new Set("aɪəɔʊɛjɜːuʌɒoɑæei");
+const vowels = new Set([
+  "a",
+  "ɑ", // ɑ or ɒ
+  "æ",
+  "ʌ",
+  "ɔ",
+  "aʊ",
+  "əɹ", // ɚ
+  "ə",
+  "aɪ",
+  "ɛ",
+  "ɛɹ", // ɝ
+  "eɪ",
+  "ɪ",
+  "ɨ",
+  "i",
+  "oʊ",
+  "ɔɪ",
+  "ʊ",
+  "u",
+  "ʉ",
+]);
 
-function escapeRegExp(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // $& means the whole matched string
-}
+const consonantsOrExtra = new Set([
+  "b",
+  "tʃ",
+  "d",
+  "ð",
+  "ɾ",
+  "l̩",
+  "m̩",
+  "n̩",
+  "f",
+  "ɡ",
+  "h",
+  "h",
+  "dʒ",
+  "k",
+  "l",
+  "m",
+  "n",
+  "ŋ",
+  "ɾ̃",
+  "p",
+  "ʔ",
+  "ɹ",
+  "s",
+  "ʃ",
+  "t",
+  "θ",
+  "v",
+  "w",
+  "ʍ",
+  "j",
+  "z",
+  "ʒ",
+]);
 
-const chunkRegex = new RegExp(
-  `([${consonantsOrExtra.split("").map(escapeRegExp).join("")}]*)` +
-    `([${vowels}]+)` +
-    `([${consonantsOrExtra.split("").map(escapeRegExp).join("")}]*)`
-);
 function splitIntoChunks(
-  syll: string
-): [string | undefined, string | undefined, string | undefined] {
-  const result = chunkRegex.exec(syll)?.slice(1);
-  if (result) {
-    const [onset, vowel, coda] = result;
-    return [
-      onset.trim() || undefined,
-      vowel.trim() || undefined,
-      coda.trim() || undefined,
-    ];
+  syll: Array<string>
+): [Array<string>, Array<string>, Array<string>] {
+  let onset = [];
+  let vowel = [];
+  let coda = [];
+  let state: "onset" | "vowel" | "coda" = "onset";
+  for (const p of syll) {
+    if (state == "onset") {
+      if (consonantsOrExtra.has(p)) {
+        onset.push(p);
+      } else if (vowels.has(p)) {
+        vowel.push(p);
+        state = "vowel";
+        continue;
+      } else {
+        // no vowel at all...
+        return [[], [], []];
+      }
+    } else if ((state = "vowel")) {
+      // actually, we don't expect multiple vowels in the same syllable...
+      // but might as well tolerate it in case of bad data.
+      if (vowels.has(p)) {
+        vowel.push(p);
+      } else {
+        coda.push(p);
+        state = "coda";
+      }
+    } else if ((state = "coda")) {
+      if (consonantsOrExtra.has(p)) {
+        coda.push(p);
+      } else {
+        // vowels again in coda...
+        return [[], [], []];
+      }
+    }
   }
-  // Note: sometimes a syllable is just a consonatn acting as a vowel + consonant, lik
-  // m in rhythm
-  // ignore for now, at least in making our graph...
-  //   console.error("!!!!could not split into chunks: ", syll);
-  return ["", "", ""];
+  return [onset, vowel, coda];
 }
 
 if (require.main === module) {
   const graph = createSonorityGraph([
-    ["", "cat"],
-    ["", "hat"],
-    ["", "at"],
-    ["", "ant"],
-    ["", "it"],
-    ["", "hut"],
-    ["", "but"],
-    ["", "bun"],
-    ["", "bund"],
-    ["", "bundt"],
-    ["", "bring"],
-    ["", "thing"],
-    ["", "shin"],
-    ["", "sing"],
-    ["", "wing"],
-    ["", "win"],
+    ["cat", [["c", "a", "t"]]],
+    ["hat", [["h", "a", "t"]]],
+    ["at", [["a", "t"]]],
+    ["ant", [["a", "n", "t"]]],
+    ["it", [["i", "t"]]],
+    ["hut", [["h", "u", "t"]]],
+    ["but", [["b", "u", "t"]]],
+    ["booth", [["b", "oʊ", "θ"]]],
+    ["boo", [["b", "oʊ"]]],
+    ["truth", [["t", "r", "u", "θ"]]],
+    ["bun", [["b", "u", "n"]]],
+    ["bund", [["b", "u", "n", "d"]]],
+    ["bundt", [["b", "u", "n", "d", "t"]]],
+    ["bring", [["b", "r", "i", "n", "g"]]],
+    ["thing", [["t", "h", "i", "n", "g"]]],
+    ["shin", [["s", "h", "i", "n"]]],
+    ["sing", [["s", "i", "n", "g"]]],
+    ["wing", [["w", "i", "n", "g"]]],
+    ["win", [["w", "i", "n"]]],
+    [
+      "singing",
+      [
+        ["s", "i", "n", "g"],
+        ["i", "n", "g"],
+      ],
+    ],
   ]);
 
-  console.log(chunkRegex);
   console.log("graph:", util.inspect(graph, undefined, 8));
   console.log(printGraph(graph));
 
@@ -294,11 +374,11 @@ if (require.main === module) {
   }
 
   for (var i = 0; i < 10; i++) {
-    const palette = "bundta";
+    const palette = ["b", "u", "n", "i", "d", "t", "a", "s", "w"];
     console.log(
       "random syllable in palette: ",
-      palette,
-      getRandomSyllableFromPallete(graph, palette)
+      palette.join(""),
+      getRandomSyllableFromPallete(graph, palette)?.join("")
     );
   }
 }
