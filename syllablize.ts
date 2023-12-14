@@ -666,33 +666,6 @@ async function loadPronunciations(): Promise<Map<string, string>> {
   for (const [key, value] of Object.entries(data)) {
     let which = value[0];
 
-    /*
-    We no longer use potentially UK IPA, no need to remove UK patterns
-
-    // seems like many of the first pronnciations are UK, replacing `-er` with `ə`
-    // we prefer US because I'm biased, so just use a different pronunciation in those cases.
-    // note: we don't just take the last in the list because they tend to get more obscure IMO
-    for (const [inWord, inIPA] of UKPatterns) {
-      if (inWord.exec(key)) {
-        if (inIPA.test(which)) {
-          const better = value.find((v) => !inIPA.test(v));
-          if (better) {
-            // console.log(
-            //   "Replacing UK pronunciation %s  %s  %s.  (Rule: %s -> %s)",
-            //   pad(key, 15),
-            //   pad(which, 15),
-            //   pad(better, 15),
-            //   inWord,
-            //   inIPA
-            // );
-            numUKPronunciationsAltered++;
-            which = better;
-            break;
-          }
-        }
-      }
-    }
-    */
     // take first given pronunciation....hopefully its the one we want
     const filtered = (which as string)
       .replace(/['ˈˌˈ]/g, "") // remove stress from IPA
@@ -707,18 +680,6 @@ async function loadPronunciations(): Promise<Map<string, string>> {
 
   return pronunciations;
 }
-
-// If we see [0] in the word, and [1] in the IPA, it likely means it's an UK pronunciation
-// take any other pronunciation if there are multiple.
-// generally this is for 'r' sounds
-const UKPatterns: Array<[RegExp, RegExp]> = [
-  [/.*are$/, /.*ə$/],
-  [/.*er$/, /.*ə$/],
-  [/.*ar.*/, /.*ɑː[^r\(].*/],
-  [/.*ar.*/, /.*ə[^r\(].*/],
-  [/.*er.*/, /.*ɜː.*/],
-  [/.*or.*/, /.*ɔː.*/],
-];
 
 async function getWordsByFrequency(): Promise<Array<string>> {
   const content = await fs.readFile("./inputs/word_frequency.txt", {

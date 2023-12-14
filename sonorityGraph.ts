@@ -202,6 +202,8 @@ export function getRandomSyllableFromPallete(
   pallete: string
 ) {
   let word = "";
+  // TODO: remove from palette as you usefrom a graph,
+  // so kstrtruhr is not possible (repeated t and r in onset)
   const randomTilInPalete = (from: Array<[string | undefined, number]>) => {
     const filteredFrom = from.filter(
       ([l]) => l === undefined || pallete.includes(l!)
