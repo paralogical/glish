@@ -8,7 +8,9 @@ import {
 import {
   alternants,
   AlternativeCategory,
+  generateSyllableAlternatives,
   loadSyllabilizedIpa,
+  RandomSyllableInfo,
   SyllablizedIPA,
 } from "./syllablize";
 import { oneSigFig, progress } from "./util";
@@ -16,6 +18,13 @@ import { oneSigFig, progress } from "./util";
 async function main() {
   const syllabilizedIpa = await loadSyllabilizedIpa();
   const graph = await loadSonorityGraph(syllabilizedIpa);
+
+  // map of joined IPA -> original english,
+  // used by computed variants to lookup originals
+  const reverseLookup = new Map<string, string>();
+  for (const [key, value] of syllabilizedIpa) {
+    reverseLookup.set(value.flatMap((s) => s.join("")).join(""), key);
+  }
 
   const oneSyllable = syllabilizedIpa.filter(
     ([word, syllalbles]) => syllalbles.length === 1
@@ -59,12 +68,33 @@ async function main() {
     >
   );
 
+  const variantSubsets: { [key: string]: Array<RandomSyllableInfo | null> } =
+    {};
+  // init all variant subsets: 0000, 0001, 0010, ...
+  for (let i = 0; i < 2 ** 4; i++) {
+    const bin = i.toString(2);
+    variantSubsets[("0000" + bin).slice(-4)] = [];
+  }
+
+  for (const data of randomSyllablesWithVariations.values()) {
+    if (data.variations == null) {
+      continue;
+    }
+    const variantHash = hashForVariants(data.variations);
+    variantSubsets[variantHash].push(data);
+  }
+  // for (const [key, value] of Object.entries(variantSubsets)) {
+  //   console.log(key, value.length);
+  // }
+  // return;
+
   let assignResults: Array<boolean> = [];
   let assignSuccesses = 0;
   let assignFails = 0;
   type Method =
     | "direct"
     | "variant"
+    | "singleSyllableVariant"
     | "graph"
     | "choice"
     | "random"
@@ -73,6 +103,7 @@ async function main() {
   const assignMethod: { [key in Method]: number } = {
     direct: 0,
     variant: 0,
+    singleSyllableVariant: 0,
     graph: 0,
     choice: 0,
     random: 0,
@@ -95,6 +126,7 @@ async function main() {
     method: Method,
     previousNumSylls: number
   ) => {
+    // console.log("assign", word, value.join(""), method);
     const joined = value.join("");
     seen.add(joined);
     assignments.set(word, {
@@ -109,19 +141,189 @@ async function main() {
     }
     assignResults.push(method != "failed");
     randomSyllablesWithVariations.delete(joined);
+    wordSet.delete(joined); // probably not necessary since we've already used this word
   };
+
+  const oneSyllableWordSet = new Set(
+    oneSyllable.map((s) => s[1].flatMap((s) => s.join("")).join(""))
+  );
 
   for (const [word, syll] of oneSyllable) {
     assign(word, syll[0], "alreadyOneSyllable", 1);
+    // a one-syllable word may also have multi-syllable variants,
+    // eg. jump + jumping
+    // we should try to assign these variants to be related to the original one-syllable word.
+    const variants = findVariants(wordSet, syll);
+    const alternatives = generateSyllableAlternatives(
+      syll[0],
+      graph,
+      new Map(),
+      oneSyllableWordSet
+    );
+
+    const maybeAssignVariant = (alternant: AlternativeCategory) => {
+      const variant = variants[alternant];
+      if (variant && variant.length > 1) {
+        const alt = alternatives?.[alternant];
+        if (alt) {
+          // newly made single-syllable alternate
+          const newJoined = alt.join("");
+          oneSyllableWordSet.add(newJoined);
+          // original variant's split IPA
+          const joined = variant.flatMap((s) => s.join("")).join("");
+          // english form for original variant
+          const originalVariant = reverseLookup.get(joined)!;
+          assign(
+            originalVariant,
+            alt,
+            "singleSyllableVariant",
+            variant!.length
+          );
+        }
+      }
+    };
+    maybeAssignVariant("plural");
+    maybeAssignVariant("past");
+    maybeAssignVariant("actor");
+    maybeAssignVariant("gerund");
   }
   console.log(
     `${assignMethod.alreadyOneSyllable} / ${syllabilizedIpa.length} words already one syllable ` +
-      `(${oneSigFig(
-        (100 * assignMethod.alreadyOneSyllable) / syllabilizedIpa.length
-      )}%)`
+    `(${oneSigFig(
+      (100 * assignMethod.alreadyOneSyllable) / syllabilizedIpa.length
+    )}%)`
   );
-
+  console.log(
+    `${assignMethod.singleSyllableVariant} additional variants from single-syllable words`
+  );
   console.log("Assigning monosyllabic values...");
+
+  console.log("Finding words with variants...");
+  // this is the subset of multiSyllable which are base words with variants.
+  const multiSyllableWithVariants: typeof multiSyllable = [];
+  for (const entry of multiSyllable) {
+    const variants = findVariants(wordSet, entry[1]);
+    const variantHash = hashForVariants(variants);
+
+    if (variantHash !== "0000") {
+      multiSyllableWithVariants.push(entry);
+    }
+  }
+
+  // since we don't necessarily encounter variants with the base first,
+  // we need to prepass to find all variants and try to assign them first.
+  {
+    console.log(
+      `Assigning words with variants... (${oneSigFig(
+        (100 * multiSyllableWithVariants.length) / multiSyllable.length
+      )}%)`
+    );
+
+    let i = 0;
+    let numVariantsSkipped = 0;
+    for (const [word, sylls] of multiSyllableWithVariants) {
+      // print progress
+      // no need to print after every word
+      if (i % 100 === 0) {
+        progress(
+          i,
+          multiSyllableWithVariants.length,
+          `${i}/${multiSyllableWithVariants.length}.    ${assignMethod.variant} variant, ${numVariantsSkipped} skipped`
+        );
+      }
+      i += 1;
+
+      const variants = findVariants(wordSet, sylls);
+      const variantHash = hashForVariants(variants);
+      // if (i > 200) {
+      //   return;
+      // }
+      if (variantHash !== "0000") {
+        const candidates: Array<[RandomSyllableInfo, number, number]> = [];
+        // TODO: we could also try other variant subsets,
+        // if this one doesn't work well enough
+        for (const [variantSyllableIndex, randomSyll] of variantSubsets[
+          variantHash
+        ].entries()) {
+          if (randomSyll == null) {
+            continue;
+          }
+          if (seen.has(randomSyll.syllable.join(""))) {
+            continue;
+          }
+          // if any variant is already being used, try a new random syllable.
+          // this makes it less likely we'll use the variant,
+          // but we'd rather have it match and not cause duplicates.
+          if (
+            (randomSyll.variations?.actor != null &&
+              seen.has(randomSyll.variations?.actor?.join(""))) ||
+            (randomSyll.variations?.past != null &&
+              seen.has(randomSyll.variations?.past?.join(""))) ||
+            (randomSyll.variations?.plural != null &&
+              seen.has(randomSyll.variations?.plural?.join(""))) ||
+            (randomSyll.variations?.gerund != null &&
+              seen.has(randomSyll.variations?.gerund?.join("")))
+          ) {
+            continue;
+          }
+          const score = scoreForRandomSyllable(sylls, randomSyll);
+          if (score > 0) {
+            candidates.push([randomSyll, score, variantSyllableIndex]);
+            if (score === 10 * randomSyll.syllable.length) {
+              // early exit: we found a syllable that got the highest possible score! go for it!
+              break;
+            }
+          }
+        }
+        if (candidates.length > 0) {
+          let best: [RandomSyllableInfo | undefined, number, number] = [
+            undefined,
+            -Infinity,
+            -1,
+          ];
+          for (const cand of candidates) {
+            if (cand[1] > best[1]) {
+              best = cand;
+            }
+          }
+
+          const bestInfo = best[0]!;
+          assign(word, bestInfo.syllable, "variant", sylls.length);
+          const assignVariant = (which: AlternativeCategory) => {
+            if (bestInfo.variations?.[which]) {
+              const variantIpa = variants[which]!.flatMap((s) =>
+                s.join("")
+              ).join("");
+              const original = reverseLookup.get(variantIpa);
+              if (original == null) {
+                console.log("Uh oh couldnt reverse lookup", variantIpa);
+              }
+              assign(
+                original!,
+                bestInfo.variations[which]!,
+                "variant",
+                variants[which]!.length
+              );
+            }
+          };
+          assignVariant("past");
+          assignVariant("plural");
+          assignVariant("gerund");
+          assignVariant("actor");
+
+          // remove this variant from teh list of possiblities so we don't re-use it
+          variantSubsets[variantHash][best[2]] = null;
+
+          continue;
+        } else {
+          numVariantsSkipped++;
+        }
+      }
+    }
+    console.log();
+  }
+
+  console.log("Assigning words without variants...");
   let i = 0;
   for (const [word, sylls] of multiSyllable) {
     // print progress
@@ -134,6 +336,18 @@ async function main() {
       );
     }
     i += 1;
+
+    // if (i > 10_000) {
+    //   break; // early exit for testing
+    // }
+
+    // We tried to assign words with variants first. But if that process failed,
+    // we may have left it unassigned. We should assign it like normal.
+    // But any words that are already assigned we can safely skip (we know it's because they're from variants)
+    // TODO
+    if (assignments.has(word)) {
+      continue;
+    }
 
     // try to use any syllable directly
     {
@@ -167,22 +381,13 @@ async function main() {
     // find a random syllable to use from pregenerated list
     {
       let candidates: Array<[Array<string>, number]> = [];
-      const phones = new Set(sylls.flat());
+
       for (const [
-        joined,
+        _joined,
         randomSyll,
       ] of randomSyllablesWithVariations.entries()) {
-        let score = 0;
-        let hasAny = false;
-        for (const p of randomSyll.syllable) {
-          if (phones.has(p)) {
-            hasAny = true;
-            score += 10;
-          } else {
-            score -= 5;
-          }
-        }
-        if (hasAny) {
+        const score = scoreForRandomSyllable(sylls, randomSyll);
+        if (score > 0) {
           candidates.push([randomSyll.syllable, score]);
           if (score === 10 * randomSyll.syllable.length) {
             // early exit: we found a syllable that got the highest possible score! go for it!
@@ -217,8 +422,7 @@ async function main() {
   console.log(); // last progress bar printed `\r`, newline to leave it
 
   console.log(
-    `Assigned ${assignResults.filter(Boolean).length} words out of ${
-      multiSyllable.length
+    `Assigned ${assignResults.filter(Boolean).length} words out of ${multiSyllable.length
     }`
   );
   const [totalSyllables, newTotalSyllables] = [...assignments.values()]
@@ -247,7 +451,14 @@ async function main() {
       console.log(
         `${duplicates.length} Duplicates detected: ${duplicates
           .slice(0, 5)
-          .map((d) => `${d[0]} -> ${d[1].mono} (${d[1].method})`)}`
+          .map((d) => `${d[0]} -> ${d[1].mono} (${d[1].method})`)
+          .join("\n")}`
+      );
+      const duplicatesFileName = "outputs/duplicates.json";
+      console.log("Writing duplicates for debugging to ", duplicatesFileName);
+      await fs.writeFile(
+        duplicatesFileName,
+        JSON.stringify(duplicates, null, 2)
       );
     }
   }
@@ -287,6 +498,40 @@ async function main() {
 
 main();
 
+function scoreForRandomSyllable(
+  sylls: Array<Array<string>>,
+  randomSyll: RandomSyllableInfo
+): number {
+  const phones = new Set(sylls.flat());
+  let score = 0;
+  for (const p of randomSyll.syllable) {
+    if (phones.has(p)) {
+      score += 10;
+    } else {
+      score -= 5;
+    }
+  }
+  return score;
+}
+
+type VariantHash = string; // 001010
+/** Encode a set of variants as a string to look up in a table
+ *  e.g. {plural: true, gerund: true} -> '1010'
+ */
+function hashForVariants(variants: {
+  [key in AlternativeCategory]?: unknown;
+}): VariantHash {
+  return (
+    (variants.plural ? "1" : "0") +
+    (variants.past ? "1" : "0") +
+    (variants.gerund ? "1" : "0") +
+    (variants.actor ? "1" : "0")
+  );
+}
+
+/**
+ * Given a split IPA word, find all variants in original english, in split IPA
+ */
 function findVariants(
   wordSet: Map<string, Array<Array<string>>>,
   word: Array<Array<string>>

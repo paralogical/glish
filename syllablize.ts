@@ -195,10 +195,20 @@ export async function loadSyllabalizedPronuncations(): Promise<
   );
   console.log("wrote graphviz");
 
+  const existingOneSyllableWords: Array<string> = [];
+
+  for (const [_word, syllables] of syllabilizedIpa) {
+    if (syllables.length === 1) {
+      existingOneSyllableWords.push(
+        syllables.flatMap((s) => s.join("")).join("")
+      );
+    }
+  }
+
   // Uncomment this to generate random syllables (takes a few minutes)
   // await bulkGenerateSyllables(graph);
   console.log("creating lots of random syllables");
-  await bulkGenerateSyllablesWithVariations(graph);
+  await bulkGenerateSyllablesWithVariations(graph, existingOneSyllableWords);
 
   console.log("-----------");
 
@@ -239,7 +249,7 @@ if (require.main === module) {
 }
 
 export type AlternativeCategory = "plural" | "gerund" | "past" | "actor";
-export type AlternativesForSylalble = {
+export type AlternativesForSyllable = {
   [key in AlternativeCategory]?: Array<string>;
 };
 export const alternants: { [key in AlternativeCategory]: string } = {
@@ -249,12 +259,25 @@ export const alternants: { [key in AlternativeCategory]: string } = {
   actor: "ɹ", // bubbler
 };
 
-async function bulkGenerateSyllablesWithVariations(graph: SonorityGraph) {
+export type RandomSyllableInfo = {
+  syllable: Array<string>;
+  variations?: AlternativesForSyllable;
+};
+
+async function bulkGenerateSyllablesWithVariations(
+  graph: SonorityGraph,
+  existingOneSyllableWords: Array<string>
+) {
   const syllables = new Map<
     string,
-    { syllable: Array<string>; variations?: AlternativesForSylalble }
+    { syllable: Array<string>; variations?: AlternativesForSyllable }
   >();
   const variations = new Set<string>();
+
+  for (const word of existingOneSyllableWords) {
+    // Make sure our random syllables aren't existing one-syllable words.
+    variations.add(word);
+  }
 
   let numWithVariations = 0;
   let numWithoutVariations = 0;
@@ -270,11 +293,7 @@ async function bulkGenerateSyllablesWithVariations(graph: SonorityGraph) {
       continue;
     }
 
-    const result: {
-      syllable: Array<string>;
-      variations?: AlternativesForSylalble;
-    } = { syllable: s };
-    // try to generate variations
+    const result: RandomSyllableInfo = { syllable: s };
 
     {
       const foundVariations = generateSyllableAlternatives(
@@ -286,8 +305,9 @@ async function bulkGenerateSyllablesWithVariations(graph: SonorityGraph) {
 
       if (foundVariations) {
         result.variations = foundVariations;
-        for (const variation of Object.values(foundVariations)) {
-          variations.add(variation.join(""));
+        for (const [alternant, variation] of Object.entries(foundVariations)) {
+          const joined = variation.join("");
+          variations.add(joined);
         }
         numWithVariations++;
       } else {
@@ -331,13 +351,13 @@ const vowelRegex = /(ʌ|æ|u|ɔ|ɪ|ɑ|aɪ|i|oʊ|aʊ|eɪ|ɛɹ|ɛ|ʊ|ɔɪ)/;
  * This function also takes the set of existing variants/syllables so it won't
  * duplicate existing already-generated syllables
  */
-function generateSyllableAlternatives(
+export function generateSyllableAlternatives(
   syllable: Array<string>,
   graph: SonorityGraph,
   syllables: Map<string, unknown>,
   variations: Set<string>
-): AlternativesForSylalble | undefined {
-  let alternatives: AlternativesForSylalble | undefined = undefined;
+): AlternativesForSyllable | undefined {
+  let alternatives: AlternativesForSyllable | undefined = undefined;
 
   // const log: typeof console.log = console.log;
   const log: typeof console.log = () => undefined;
