@@ -9,8 +9,10 @@ Inputs:
 - words split into syllables (only source of syllables is on regular words, not IPA)
   inputs/Syllables.txt
 - words with IPA pronunciations (monosyllabification based on pronunciation)
-  Note: multiple valid pronunciations for any given word
-  inputs/pronunciations.json
+  from https://github.com/open-dict-data/ipa-dict/tree/master/data
+  Note: multiple valid pronunciations for any given word,
+  but all American english
+  inputs/en_US_IPA.json
 
 Stages:
 

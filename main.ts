@@ -1,4 +1,5 @@
 import { promises as fs } from "fs";
+import { respellIPA } from "./respellIPA";
 import {
   constuctSyllablizedPronunciations,
   evaluateSyllablization,
@@ -72,20 +73,35 @@ async function main() {
     // assignments.set(word, syll);
   }
 
-  for (const [word, syllsStr] of multiSyllable.slice(0, 500)) {
+  let assignSuccesses = [];
+
+  // for (const [word, syllsStr] of multiSyllable.slice(0, 500)) {
+  for (const [word, syllsStr] of multiSyllable) {
     const sylls = syllsStr.split("|");
     const firstunused = sylls.find((syll) => !seen.has(syll));
     if (firstunused == null) {
       console.log("❌ couldnt assign %s, theyre all taken", word);
-      // assignments.set(word, "???");
+      assignments.set(word, `#${word}#`);
+      assignSuccesses.push(false);
     } else {
       seen.add(firstunused);
       assignments.set(word, firstunused);
       console.log("✅ assigned %s -> %s", word, firstunused);
+      assignSuccesses.push(true);
     }
   }
 
   console.log(assignments);
+  const first500Success =
+    (100 * assignSuccesses.slice(0, 500).filter(Boolean).length) / 500;
+  const first5000Success =
+    (100 * assignSuccesses.slice(0, 5000).filter(Boolean).length) / 5000;
+  const first50000Success =
+    (100 * assignSuccesses.slice(0, 50000).filter(Boolean).length) / 50000;
+  console.log("first 500 success rate:", first500Success);
+  console.log("first 5000 success rate:", first5000Success);
+  console.log("first 50000 success rate:", first50000Success);
+
   const monosyllabicResult: { [key: string]: string } = {};
 
   for (const [word, syll] of entries) {
@@ -112,6 +128,52 @@ async function main() {
     await fs.writeFile(
       resultFilename,
       JSON.stringify(Object.fromEntries(assignments.entries()), undefined, 2)
+    );
+  }
+  {
+    const resultWithSingleSyllFilename = "outputs/respelled.json";
+    console.log(
+      "writing monosyllabic result to ",
+      resultWithSingleSyllFilename
+    );
+    await fs.writeFile(
+      resultWithSingleSyllFilename,
+      JSON.stringify(
+        Object.fromEntries(
+          Object.entries(monosyllabicResult).map(([word, mono]) => [
+            word,
+            respellIPA(mono),
+          ])
+        ),
+        undefined,
+        2
+      )
+    );
+  }
+  {
+    const resultFilename = "monosyllable-ui/src/routes/monosyllabic.ts";
+    console.log(
+      "writing ui-consumable monosyllabic result to ",
+      resultFilename
+    );
+    await fs.writeFile(
+      resultFilename,
+      "export const monosyllabic = new Map<string, {mono: string, respelled_mono: string, multiSyllable: boolean}>(" +
+        JSON.stringify(
+          Object.entries(monosyllabicResult).map(([word, mono]) => {
+            return [
+              word,
+              {
+                mono,
+                multiSyllable: assignments.has(word),
+                respelled_mono: respellIPA(mono),
+              },
+            ];
+          }),
+          undefined,
+          2
+        ) +
+        ");"
     );
   }
 

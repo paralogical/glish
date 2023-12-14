@@ -21,83 +21,150 @@ export function constuctSyllablizedPronunciation(
 ): [string, string] {
   const [word, syllables, pronunciation] = value;
   const scores: Array<{ score: number; partition: Array<string> }> = [];
-  const log = shouldLog ? console.log : () => {};
+  let log = shouldLog ? console.log : () => {};
   log("Evaluating ", value);
-  // console.log("Evaluating ", value);
   const pronunciationParts = groupIPASymbols(pronunciation);
   for (const partition of iteratePartitions(
     pronunciationParts,
     syllables.length
   )) {
-    log("%s: evaluating %s against %s", word, partition, syllables);
+    // To debug a certain word syllabification:
+    // if (
+    //   word === "unscathed" &&
+    //   ["ən|skeɪðd", "ə|nskeɪðd"].includes(
+    //     partition.map((p) => p.join("")).join("|")
+    //   )
+    // ) {
+    //   log = console.log;
+    // } else {
+    //   log = () => {};
+    // }
+    log(
+      "\n%s: evaluating %s against %s",
+      word,
+      partition.map((p) => p.join("")),
+      syllables
+    );
     let score = 0;
     // compare each potential syllable against the real syllable
     for (let i = 0; i < partition.length; i++) {
       const letters = partition[i];
       const goal = syllables[i];
-      //   if (letters[0] === "ˈ") {
-      //     score += 1; // if there is a `'`, it should be at the start
-      //   }
+      log(`> ${letters.join("")} to ${goal}`);
       if (letters[0] === ".") {
         score += 15; // if there is a `'`, it should be at the start
         // except sometimes the pronunciation or syllables are weird, so it's not that important
+        log("\t+15 . at start");
       }
       if (letters.every((l) => consonantsOrExtra.has(l))) {
         score -= 5; // consonants shouldn't be by themselves as a syllable
+        log("\t-5 all consonants");
       }
 
       // length heuristic, ignoring some characters like .
       const filteredLetters = letters.filter((l) => l !== ".");
       const lengthDiff = Math.abs(filteredLetters.length - goal.length);
+      log(`\t-${lengthDiff * lengthDiff} length heuristic`);
       score -= lengthDiff * lengthDiff; // square to punish very big differences
 
       // vowel forms, discourage e.g. vowel-consonant-vowel
       const form = vowelFormForLetters(letters);
       if (["CVC", "CV", "VC", "V", "C"].includes(form)) {
+        log(`\t+15 ${form} form`);
         score += 15;
+      }
+
+      // letters like 'r' by itself is not usually a correct syllable
+      if (
+        letters.length === 1 &&
+        disourcedByItself.has(letters[0]) &&
+        // unless one of the recommended syllables is just an r...
+        !syllables.find((s) => disourcedByItself.has(s))
+      ) {
+        log(`\t-40 ${letters[0]} by itself`);
+        score -= 40;
       }
 
       // exact correlation: if every letter correlates 1:1 with other letters exactly matching the length,
       // that's a really strong signal
-      if (lengthDiff == 0) {
-        let remaining = goal;
-        let allMatch = true;
-        //  pɹɪv  pri
-        for (const letter of filteredLetters) {
-          const correlate = correlates.get(letter);
-          if (correlate == null) {
-            allMatch = false;
-            break;
-          }
-          let found = false;
-          for (const corr of correlate) {
-            if (remaining.startsWith(corr)) {
-              found = true;
-              remaining = remaining.slice(corr.length);
-              break;
-            }
-          }
-          if (found) {
-            continue;
-          } else {
-            allMatch = false;
+      let remaining = goal;
+      let allMatch = true;
+      log("   -> correlation check", filteredLetters.join(""), "to", goal);
+      //  pɹɪv  pri
+      for (const letter of filteredLetters) {
+        const correlate = correlates.get(letter);
+        if (correlate == null) {
+          log("   -> no correlate for ", letter);
+          allMatch = false;
+          break;
+        }
+        let found = false;
+        for (const corr of correlate) {
+          if (remaining.startsWith(corr)) {
+            log(`   -> ${remaining} starts with ${corr}`);
+            found = true;
+            remaining = remaining.slice(corr.length);
             break;
           }
         }
-        if (allMatch) {
-          // log("all match: ", goal, letters.join(""));
-          score += 8;
+        if (found) {
+          continue;
+        } else {
+          log(
+            `   -> None match for ${correlate} within ${remaining} of ${goal}`
+          );
+          allMatch = false;
+          break;
+        }
+      }
+      if (allMatch) {
+        if (lengthDiff === 0) {
+          log(`\t+10 length match AND all match ${filteredLetters} to ${goal}`);
+          score += 10;
+        } else {
+          log(`\t+5 all match ${filteredLetters} to ${goal}`);
+          score += 5;
+        }
+      }
+
+      // consonant matching
+      // if there's only one 'k', and the pronunciation has only one correlate of k,
+      // then it should appear in the same syllable
+
+      log("    > consonant matching");
+      for (const consonant of letters.filter((l) => consonantsOrExtra.has(l))) {
+        if (word.indexOf(consonant) != word.lastIndexOf(consonant)) {
+          // there's more than one of this consonant, can't use for this
+          log(`    > more thant one ${consonant}, skipping`);
+          continue;
+        }
+        const potentials = correlates.get(consonant);
+        if (!potentials) {
+          continue;
+        }
+        let foundAny = false;
+        for (const potential of potentials) {
+          if (goal.includes(potential)) {
+            log(`    > found ${potential} matching ${consonant}`);
+            foundAny = true;
+            break;
+          }
+        }
+        if (foundAny) {
+          log(`\t+5 consonant correlation ${consonant}`);
+          score += 1;
         }
       }
 
       // correlation of all letters in syllable
       for (const letter of letters) {
         const potentials = correlates.get(letter);
-        log("    potentials for %s: %s", letter, potentials);
+        log("\tpotentials for %s: %s", letter, potentials);
         if (potentials && potentials.length > 0) {
           for (const potential of potentials) {
             // log("    looking for %s in %s", potential, goal);
             if (goal.includes(potential)) {
+              log(`\t+1 correlation ${letter} as ${potential} in ${goal}`);
               score += 1;
             }
           }
@@ -121,6 +188,8 @@ export function constuctSyllablizedPronunciation(
   return [word, best.partition.join("|")];
 }
 
+const disourcedByItself = new Set(["r", "ɹ", "g", "w", "ɡ", "t"]);
+
 // used for preventing only-consonant syllables
 const consonantsOrExtra = new Set(
   ".bcdfghjklmnpqrstvwxz" +
@@ -141,7 +210,6 @@ const consonantsOrExtra = new Set(
     "θ" +
     "ɡ" +
     "ʒ" +
-    "ɝ" +
     "ŋ" +
     // "ɚ" + // ???
     "ʍ" +
@@ -155,7 +223,8 @@ const consonantsOrExtra = new Set(
 );
 
 const correlates = new Map([
-  ["dʒ", ["j", "ge", "dr"]],
+  ["dʒɛ", ["je", "ge", "dre"]],
+  ["dʒ", ["j", "g", "dr"]],
   ["eɪ", ["a", "e"]],
   ["l̥", ["l"]],
   ["kʰ", ["c", "k"]],
@@ -186,8 +255,8 @@ const correlates = new Map([
   [".", []],
   ["'", []],
   //
-  ["ɪ", ["i", "y", "e"]],
-  ["ə", ["er", "e", "i", "a"]],
+  ["ɪ", ["i", "y", "e", "o"]],
+  ["ə", ["er", "e", "i", "a", "u"]],
   ["æd", ["a"]],
   ["ʊ", ["o"]],
   ["ð", ["th"]],
@@ -265,248 +334,213 @@ const correlates = new Map([
 ]);
 
 const tests = [
-  // one-syllable sanity test
-  ["post", "pəʊst"],
-  ["add", "æd"],
-  // tricky cases
-  ["message", "mɛs|ɪd͡ʒ"], // honestly, both this and mɛ|sɪd͡ʒ are OK
-  ["available", "ə|veɪl|ə|b(ə)l"],
-  ["software", "sɔft|wɛɹ"],
-  ["copyright", "kɑp|i|ɹaɪt"],
-  ["information", "ɪn|fə|meɪ|ʃən"],
-  ["service", "sɝv|ɪs"],
-  ["data", "deɪ|tə"],
-  ["order", "ɔɹ|dɚ"],
-  ["privacy", "pɹɪ|və|si"],
-  ["music", "mjuː|zɪk"],
-  // validated good cases
-  ["system", "sɪs|təm"],
-  ["city", "sɪt|i"],
-  ["policy", "pɒl|ə|si"],
-  ["number", "nʌm|bɚ"],
-  ["support", "sə|pɔɹt"],
-  ["after", "ɑːf|tə(ɹ)"],
-  ["video", "vɪd|i|əʊ"],
+  ["post", "poʊst"], // post
+  // ["message", "mɛs|ədʒ"], // mes|sage
+  ["available", "ə|veɪɫ|ə|bəɫ"], // a|vail|a|ble
+  ["software", "sɔf|wɛr"], // soft|ware
+  ["information", "ɪn|fər|meɪ|ʃən"], // in|for|ma|tion
+  ["service", "sərv|əs"], // serv|ice
+  ["data", "dæ|tə"], // da|ta
+  ["order", "ɔr|dər"], // or|der
+  ["privacy", "praɪ|və|si"], // pri|va|cy
+  ["music", "mju|zɪk"], // mu|sic
+  ["policy", "pɑɫ|ə|si"], // pol|i|cy
+  ["number", "nəm|bər"], // num|ber
+  ["after", "æf|tər"], // af|ter
+  ["video", "vɪd|i|oʊ"], // vid|e|o
+  ["other", "əð|ər"], // oth|er
+  ["any", "ɛn|i"], // an|y
+  ["only", "oʊn|ɫi"], // on|ly
+  ["business", "bɪz|nəs"], // busi|ness
+  ["also", "ɔɫ|soʊ"], // al|so
+  ["services", "sər|vəs|əz"], // ser|vic|es
+  ["people", "pi|pəɫ"], // peo|ple
+  ["into", "ɪn|tu"], // in|to
+  ["product", "prɑd|əkt"], // prod|uct
+  ["policy", "pɑɫ|ə|si"], // pol|i|cy
+  ["number", "nəm|bər"], // num|ber
+  ["info", "ɪn|foʊ"], // in|fo
+  ["public", "pəb|ɫɪk"], // pub|lic
+  ["review", "ri|vju"], // re|view
+  ["company", "kəm|pə|ni"], // com|pa|ny
+  // ["user", "ju|zər"], // us|er
+  ["under", "ən|dər"], // un|der
+  ["university", "ju|nə|vər|sə|ti"], // u|ni|ver|si|ty
+  ["program", "proʊ|ɡræm"], // pro|gram
+  ["management", "mæn|ədʒ|mənt"], // man|age|ment
+  ["hotel", "hoʊ|tɛɫ"], // ho|tel
+  ["center", "sɛn|ər"], // cen|ter
+  ["travel", "træv|əɫ"], // trav|el
+  ["report", "ri|pɔrt"], // re|port
+  ["member", "mɛm|bər"], // mem|ber
+  ["before", "bi|fɔr"], // be|fore
+  ["because", "bɪ|kɑz"], // be|cause
+  // ["education", "ɛdʒ|ə|keɪ|ʃən"], // ed|u|ca|tion
+  ["area", "ɛ|ri|ə"], // a|re|a
+  ["security", "sɪ|kjʊ|rə|ti"], // se|cu|ri|ty
+  ["profile", "proʊ|faɪɫ"], // pro|file
+  ["local", "ɫoʊ|kəɫ"], // lo|cal
+  // ["using", "ju|zɪŋ"], // us|ing
+  // ["office", "ɔf|ɪs"], // of|fice
+  ["national", "næ|ʃən|əɫ"], // na|tion|al
+  ["address", "æd|rɛs"], // ad|dress
+  ["community", "kəm|ju|nə|ti"], // com|mu|ni|ty
+  ["subject", "səb|dʒɪkt"], // sub|ject
+  ["between", "bi|twin"], // be|tween
+  ["forum", "fɔ|rəm"], // fo|rum
+  ["family", "fæm|ə|ɫi"], // fam|i|ly
+  ["even", "i|vɪn"], // e|ven
+  ["special", "spɛ|ʃəɫ"], // spe|cial
+  ["being", "bi|ɪŋ"], // be|ing
+  ["women", "wɪm|ən"], // wom|en
+  ["open", "oʊ|pən"], // o|pen
+  ["technology", "tɛk|nɑɫ|ə|dʒi"], // tech|nol|o|gy
+  ["project", "prɑdʒ|ɛkt"], // proj|ect
+  ["related", "ri|ɫeɪt|ɪd"], // re|lat|ed
+  ["county", "kaʊn|i"], // coun|ty
+  ["photo", "foʊ|toʊ"], // pho|to
+  ["network", "nɛt|wərk"], // net|work
+  // ["computer", "kəm|pju|tər"], // com|put|er
+  ["total", "toʊ|təɫ"], // to|tal
+  ["following", "fɑ|ɫo|ʊɪŋ"], // fol|low|ing
+  ["without", "wɪð|aʊt"], // with|out
+  ["current", "kɑ|rənt"], // cur|rent
+  ["media", "mi|di|ə"], // me|di|a
+  ["control", "kən|troʊɫ"], // con|trol
+  // ["history", "hɪs|t|əri"], // his|to|ry
+  ["including", "ɪn|kɫud|ɪŋ"], // in|clud|ing
+  ["location", "ɫoʊ|keɪ|ʃən"], // lo|ca|tion
+  ["children", "tʃɪɫ|drən"], // chil|dren
+  ["during", "dər|ɪŋ"], // dur|ing
+  ["account", "ək|aʊnt"], // ac|count
+  ["level", "ɫɛv|əɫ"], // lev|el
+  ["digital", "dɪdʒ|ət|əɫ"], // dig|it|al
+  ["image", "ɪm|ədʒ"], // im|age
+  ["department", "dɪ|pɑrt|mənt"], // de|part|ment
+  ["title", "taɪ|təɫ"], // ti|tle
+  ["another", "ən|əð|ər"], // an|oth|er
+  ["article", "ɑr|tə|kəɫ"], // ar|ti|cle
+  ["advanced", "əd|vænst"], // ad|vanced
+  ["market", "mɑr|kət"], // mar|ket
+  ["library", "ɫaɪ|brɛr|i"], // li|brar|y
+  ["series", "sɪ|riz"], // se|ries
+  ["against", "ə|ɡeɪnst"], // a|gainst
+  ["standard", "stænd|ərd"], // stand|ard
+  ["status", "stæ|təs"], // sta|tus
+  ["property", "prɑp|ər|ti"], // prop|er|ty
+  ["money", "mən|i"], // mon|ey
+  ["quality", "kwɑɫ|ə|ti"], // qual|i|ty
+  ["listing", "ɫɪst|ɪŋ"], // list|ing
+  ["content", "kɑn|tɛnt"], // con|tent
+  ["country", "kən|tri"], // coun|try
+  ["private", "praɪ|vət"], // pri|vate
+  ["little", "ɫɪt|əɫ"], // lit|tle
+  ["reply", "ri|pɫaɪ"], // re|ply
+  ["customer", "kəs|təm|ər"], // cus|tom|er
+  ["compare", "kəm|pɛr"], // com|pare
+  ["include", "ɪn|kɫud"], // in|clude
+  ["college", "kɑ|ɫɪdʒ"], // col|lege
+  ["value", "væɫ|ju"], // val|ue
+  ["author", "ɔ|θər"], // au|thor
+  // ["process", "prɑ|sɛs"], // proc|ess
+  ["credit", "krɛd|ət"], // cred|it
+  ["english", "ɪŋɡ|ɫɪʃ"], // eng|lish
+  ["select", "sə|ɫɛkt"], // se|lect
+  ["table", "teɪ|bəɫ"], // ta|ble
+  ["register", "rɛdʒ|ɪs|tər"], // reg|is|ter
+  ["however", "haʊ|ɛv|ər"], // how|ev|er
+  ["model", "mɑd|əɫ"], // mod|el
+  ["human", "hju|mən"], // hu|man
+  ["required", "ri|kwaɪərd"], // re|quired
+  ["second", "sɛk|ənd"], // sec|ond
+  ["movie", "muv|i"], // mov|ie
+  // ["better", "bɛt|ər"], // bet|ter
+  ["yahoo", "jɑ|hu"], // ya|hoo
+  ["going", "ɡo|ʊɪn"], // go|ing
+  ["medical", "mɛd|ə|kəɫ"], // med|i|cal
+  ["server", "sərv|ər"], // serv|er
+  ["study", "stəd|i"], // stud|y
+  ["application", "æ|pɫə|keɪ|ʃən"], // ap|pli|ca|tion
+  ["feedback", "fid|bæk"], // feed|back
+  ["again", "ə|ɡeɪn"], // a|gain
+  ["never", "nɛv|ər"], // nev|er
+  ["complete", "kəm|pɫit"], // com|plete
+  ["topic", "tɑp|ɪk"], // top|ic
+  ["comment", "kɑ|mɛnt"], // com|ment
+  ["financial", "faɪ|næn|ʃəɫ"], // fi|nan|cial
+  ["working", "wərk|ɪŋ"], // work|ing
+  ["below", "bi|ɫoʊ"], // be|low
+  ["mobile", "moʊ|bəɫ"], // mo|bile
+  ["student", "stu|dənt"], // stu|dent
+  ["legal", "ɫi|ɡəɫ"], // le|gal
+  ["above", "ə|bəv"], // a|bove
+  ["recent", "ri|sənt"], // re|cent
+  ["problem", "prɑb|ɫəm"], // prob|lem
+  ["performance", "pər|fɔr|məns"], // per|for|mance
+  ["social", "soʊ|ʃəɫ"], // so|cial
+  ["august", "ɑ|ɡəst"], // au|gust
+  ["language", "ɫæŋ|ɡwədʒ"], // lan|guage
+  ["create", "kri|eɪt"], // cre|ate
+  ["body", "bɑd|i"], // bod|y
+  ["paper", "peɪ|pər"], // pa|per
+  ["single", "sɪŋ|ɡəɫ"], // sin|gle
+  ["example", "ɪɡz|æm|pəɫ"], // ex|am|ple
+  ["additional", "ə|dɪ|ʃən|əɫ"], // ad|di|tion|al
+  ["password", "pæs|wərd"], // pass|word
+  ["latest", "ɫeɪt|əst"], // lat|est
+  ["something", "səm|θɪŋ"], // some|thing
+  ["question", "kwɛs|tʃən"], // ques|tion
+  ["issue", "ɪ|ʃu"], // is|sue
+  ["building", "bɪɫd|ɪŋ"], // build|ing
+  ["seller", "sɛɫ|ər"], // sell|er
+  ["always", "ɔɫ|weɪz"], // al|ways
+  ["result", "ri|zəɫt"], // re|sult
+  ["audio", "ɑ|di|oʊ"], // au|di|o
+  ["easy", "iz|i"], // eas|y
+  ["event", "i|vɛnt"], // e|vent
+  ["release", "ri|ɫis"], // re|lease
+  ["analysis", "ə|næɫ|ə|səs"], // a|nal|y|sis
+  ["request", "ri|kwɛst"], // re|quest
+  ["picture", "pɪk|tʃər"], // pic|ture
+  ["possible", "pɑ|sə|bəɫ"], // pos|si|ble
+  ["professional", "prə|fɛ|ʃən|əɫ"], // pro|fes|sion|al
+  ["major", "meɪ|dʒər"], // ma|jor
+  /////
+
+  ["really", "ri|ɫ|i"], // re|al|ly
+  ["return", "ri|tərn"], // re|turn
+  ["government", "ɡəv|ər|mənt"], // gov|ern|ment
+  // ["directory", "daɪ|rɛk|tɛ|ri"], // di|rec|to|ry
+  ["general", "dʒɛn|ər|əɫ"], // gen|er|al
+  ["research", "ri|sərtʃ"], // re|search
+  ["united", "ju|naɪt|ɪd"], // u|nit|ed
+  ["real", "ri|ɫ"], // re|al
+  ["reserved", "ri|zərvd"], // re|served
+  ["water", "wɔ|tər"], // wa|ter
+  ["message", "mɛ|sədʒ"], // mes|sage
+  ["using", "juz|ɪŋ"], // us|ing
+  ["office", "ɔ|fɪs"], // of|fice
+  ["computer", "kəm|pjut|ər"], // com|put|er
+  ["process", "prɑs|ɛs"], // proc|ess
+  //////////////
   ["about", "ə|baʊt"],
-  ["other", "ʌð|ə(ɹ)"],
-  ["any", "ɛn|ɪ"],
-  ["only", "əʊn|li"],
-  ["contact", "kɑn|tækt"],
-  ["business", "bɪz|nɪs"],
-  ["also", "ɔːl|səʊ"],
-  ["services", "sɝ|vɪs|ɪz"],
-  ["people", "piː|pəl"],
-  ["over", "əʊ|və(ɹ)"],
-  ["into", "ɪn|tuː"],
-  ["product", "pɹɒd|əkt"],
-  ["system", "sɪs|təm"],
-  ["city", "sɪt|i"],
-  ["policy", "pɒl|ə|si"],
-  ["number", "nʌm|bɚ"],
-  ["info", "ɪn|fəʊ"],
-  ["public", "pʌb|lɪk"],
-  ["review", "ɹɪ|vjuː"],
-  ["very", "vɛɹ|i"],
-  ["company", "kʌm|p(ə)|ni"],
-  ["general", "d͡ʒɛn|əɹ|əl"],
-  ["many", "mɛn|i"],
-  ["user", "ju|zɚ"],
-  ["under", "ʌn|də(ɹ)"],
-  ["research", "ɹɪ|sɜːtʃ"],
-  ["university", "ju|nɪ|vɝ|sə|ti"],
-  ["program", "pɹəʊ|ɡɹæm"],
-  ["management", "mæn|ɪdʒ|mənt"],
-  ["united", "juː|naɪt|ɪd"],
-  ["hotel", "(h)əʊ|tɛl"],
-  ["real", "ɹeɪ|ɑːl"],
-  ["item", "aɪ|təm"],
-  ["center", "sɛn|tɚ"],
-  ["travel", "tɹæv|əl"],
-  ["report", "ɹɪ|pɔɹt"],
-  ["member", "mɛm|bɚ"],
-  ["before", "bə|fɔɹ"],
-  ["because", "bɪ|kɒz"],
-
-  ["education", "ɛd͡ʒ|ʊ|keɪ|ʃən"],
-  ["area", "ɛɚ|i|ə"],
-  ["reserved", "ɹɪ|zɝvd"],
-  ["security", "sɪ|kjʊə|ɹə|ti"],
-  ["water", "wɔ|tər"],
-  ["profile", "pɹoʊ|faɪl"],
-  ["insurance", "ɪn|ʃʊɹ|əns"],
-
-  ["local", "ləʊ|kl̩"],
-  ["using", "juː|zɪŋ"],
-  ["office", "ɒf|ɪs"],
-  ["national", "na|ʃn̩|(ə)l"],
-  ["design", "dɪ|zaɪn"],
-  ["address", "əd|ɹɛs"],
-  ["community", "kəm|juː|nɪ|ti"],
-  ["within", "wɪð|ɪn"],
-  ["shipping", "ʃɪ|pɪŋ"],
-  ["subject", "səb|dʒɛkt"],
-  ["between", "bɪ|twiːn"],
-  ["forum", "fɔː|ɹəm"],
-  ["family", "fæm|(ɪ)|li"],
-  ["even", "iː|vən"],
-  ["special", "spɛʃ|əl"],
-  ["index", "ɪn|dɛks"],
-  ["being", "biː|ɪŋ"],
-  ["women", "wɪm|ɪn"],
-  ["open", "əʊ|pən"],
-  ["today", "tə|deɪ"],
-  ["technology", "tɛk|nɒl|ə|dʒi"],
-  ["project", "pɹɒdʒ|ɛkt"],
-  ["version", "vɝ|ʒən"],
-  ["section", "sɛk|ʃən"],
-  ["related", "ɹɪ|leɪt|ɪd"],
-  ["county", "kaʊn|ti"],
-  ["photo", "fəʊ|təʊ"],
-  ["power", "paʊ|ə(ɹ)"],
-  ["network", "nɛt|wɜːk"],
-  ["computer", "kəm|pju|tɚ"],
-  ["total", "təʊ|təl"],
-  ["following", "fɒl|əʊ|ɪŋ"],
-  ["without", "wɪθ|aʊt"],
-  ["access", "æk|sɛs"],
-  ["current", "kʌ|ɹənt"],
-  ["media", "miː|dɪ|ə"],
-  ["control", "kən|tɹəʊl"],
-  ["history", "hɪs|t(ə)|ɹi"],
-  ["personal", "pɜɹ|sən|əl"],
-  ["including", "ɪn|kluːd|ɪŋ"],
-  ["directory", "dɪ|ɹɛk|tə|ɹi"],
-  ["location", "loʊ|keɪ|ʃən"],
-  ["rating", "ɹeɪt|ɪŋ"],
-  ["government", "ɡʌv|ə(n)|mənt"],
-  ["children", "t͡ʃɪl|dɹən"],
-  ["during", "djʊə|ɹɪŋ"],
-  ["return", "ɹɪ|tɜːn"],
-  ["shopping", "ʃɑ|pɪŋ"],
-  ["account", "ə|kaʊnt"],
-  ["level", "lɛv|əl"],
-  ["digital", "dɪd͡ʒ|ɪt|l̩"],
-  ["previous", "pɹi|vi|əs"],
-  ["image", "ɪm|ɪd͡ʒ"],
-  ["department", "də|pɑɹt|mənt"],
-  ["title", "taɪ|tl̩"],
-  ["description", "dɪ|skɹɪp|ʃən"],
-  ["another", "ən|ʌð|ə(ɹ)"],
-  //
-  ["every", "ɛv(ə)|ɹi"], // eve|ry
-  ["article", "ɑɹ|tɪ|kəl"], // ar|ti|cle
-  ["advanced", "əd|vɑːnst"], // ad|vanced
-  ["market", "mɑɹ|kɪt"], // mar|ket
-  ["library", "laɪ|bɹɛɹ|i"], // li|brar|y
-  ["series", "sɪə|ɹiːz"], // se|ries
-  ["against", "ə|ɡɛ(ɪ)nst"], // a|gainst
-  ["standard", "stænd|əd"], // stand|ard
-  ["person", "pɝ|sən"], // per|son
-  ["party", "pɑɹ|ti"], // par|ty
-  ["experience", "ɪks|pɪ|ɹi|əns"], // ex|pe|ri|ence
-  ["important", "ɪm|pɔɹ|tənt"], // im|por|tant
-  ["poker", "poʊ|kɚ"], // pok|er
-  ["status", "stæt|əs"], // sta|tus
-  //
-  ["property", "pɹɑ|pɚ|ti"], // prop|er|ty
-  ["money", "mʌn|i"], // mon|ey
-  ["quality", "kwɒl|ɪ|ti"], // qual|i|ty
-  ["listing", "lɪst|ɪŋ"], // list|ing
-  ["content", "kɔn|tɛnt"], // con|tent
-  ["country", "kʌn|tɹi"], // coun|try
-  ["private", "pɹaɪ|vɪt"], // pri|vate
-  ["little", "lɪt|əl"], // lit|tle
-  ["visit", "vɪz|ɪt"], // vis|it
-  ["reply", "ɹɪ|plaɪ"], // re|ply
-  ["customer", "kʌs|təm|ɚ"], // cus|tom|er
-  ["compare", "kəm|pɛɚ"], // com|pare
-  ["include", "ɪn|kluːd"], // in|clude
-  ["college", "kɒl|ɪd͡ʒ"], // col|lege
-  ["value", "væl|juː"], // val|ue
-  ["provide", "pɹə|vaɪd"], // pro|vide
-  ["author", "ɔ|θɚ"], // au|thor
-  ["different", "dɪf|əɹ|ənt"], // dif|fer|ent
-  ["around", "ə|ɹaʊnd"], // a|round
-  ["process", "pɹə|sɛs"], // proc|ess
-  ["training", "tɹeɪn|ɪŋ"], // train|ing
-  ["credit", "kɹɛd|ɪt"], // cred|it
-  ["science", "saɪ|əns"], // sci|ence
-  ["english", "ɪŋ|ɡlɪʃ"], // eng|lish
-  ["estate", "ɪs|teɪt"], // es|tate
-  ["select", "sɪ|lɛkt"], // se|lect
-  ["category", "kæt|ə|ɡɔ|ɹi"], // cat|e|go|ry
-  ["gallery", "ɡæl|əɹ|i"], // gal|ler|y
-  ["table", "teɪ|bəl"], // ta|ble
-  ["register", "ɹɛdʒ|ɪs|tɚ"], // reg|is|ter
-  ["however", "haʊ|ɛv|ɚ"], // how|ev|er
-  ["really", "ɹɪ|ə|lɪ"], // re|al|ly
-  ["action", "æk|ʃən"], // ac|tion
-  ["model", "mɒd|l̩"], // mod|el
-  ["industry", "ɪn|dəs|tɹi"], // in|dus|try
-  ["human", "(h)juː|mən"], // hu|man
-  ["provided", "pɹə|vaɪd|ɪd"], // pro|vid|ed
-  ["required", "ɹɪ|kwaɪɹd"], // re|quired
-  ["second", "sək|ɒnd"], // sec|ond
-  ["movie", "muːv|i"], // mov|ie
-  ["better", "bɛt|əɹ"], // bet|ter
-  ["yahoo", "jə|huː"], // ya|hoo
-  ["going", "ɡəʊ|ɪŋ"], // go|ing
-  ["medical", "mɛd|ɪ|kl̩"], // med|i|cal
-  ["server", "sɝv|ɚ"], // serv|er
-  ["study", "stʌd|i"], // stud|y
-  ["application", "æ|plɪ|keɪ|ʃən"], // ap|pli|ca|tion
-  ["feedback", "fiːd|bæk"], // feed|back
-  ["again", "ə|ɡɛn"], // a|gain
-  ["never", "nɛv|ə(ɹ)"], // nev|er
-  ["complete", "kəm|pliːt"], // com|plete
-  ["topic", "tɒp|ɪk"], // top|ic
-  ["comment", "kɒm|ɛnt"], // com|ment
-  ["financial", "faɪ|næn|ʃəl"], // fi|nan|cial
-  ["working", "wɜːk|ɪŋ"], // work|ing
-  ["below", "bɪ|ləʊ"], // be|low
-  ["mobile", "məʊ|baɪl"], // mo|bile
-  ["payment", "peɪ|mənt"], // pay|ment
-  ["equipment", "ɪ|kwɪp|mənt"], // e|quip|ment
-  ["student", "stjuː|dənt"], // stu|dent
-  ["legal", "liː|ɡəl"], // le|gal
-  ["above", "ə|bʌv"], // a|bove
-  ["recent", "ɹiː|sənt"], // re|cent
-  ["problem", "pɹɒb|ləm"], // prob|lem
-  ["memory", "mɛm|(ə)|ɹi"], // mem|o|ry
-  ["performance", "pəɹ|fɔɹ|məns"], // per|for|mance
-  ["social", "səʊ|ʃəl"], // so|cial
-  ["august", "ɔː|ɡʌst"], // au|gust
-  ["language", "læŋ|ɡwɪd͡ʒ"], // lan|guage
-  ["story", "stɔ|ɹi"], // sto|ry
-  ["create", "kɹiː|eɪt"], // cre|ate
-  ["body", "bɒd|i"], // bod|y
-  ["paper", "peɪ|pɚ"], // pa|per
-  ["single", "sɪŋ|ɡəl"], // sin|gle
-  ["example", "ɪɡz|ɑːm|pl̩"], // ex|am|ple
-  ["additional", "ə|dɪ|ʃən|əl"], // ad|di|tion|al
-  ["password", "pæs|wɜːɹd"], // pass|word
-  ["latest", "leɪt|ɪst"], // lat|est
-  ["something", "sʌm|θɪŋ"], // some|thing
-  ["question", "kwɛs|t͡ʃən"], // ques|tion
-  ["issue", "ɪs|juː"], // is|sue
-  ["building", "bɪl|dɪŋ"], // build|ing
-  ["seller", "sɛl|ɚ"], // sell|er
-  ["always", "ɔː(l)|weɪz"], // al|ways
-  ["result", "ɹɪ|zʌlt"], // re|sult
-  ["audio", "ɔː|di|əʊ"], // au|di|o
-  ["offer", "ɒf|ə(ɹ)"], // of|fer
-  ["easy", "iːz|i"], // eas|y
-  ["given", "ɡɪv|ən"], // giv|en
-  ["event", "ɪ|vɛnt"], // e|vent
-  ["release", "ɹiː|liːs"], // re|lease
-  ["analysis", "ə|næl|ɪ|sɪs"], // a|nal|y|sis
-  ["request", "ɹɪ|kwɛst"], // re|quest
-  ["china", "tʃaɪ|nə"], // chi|na
-  ["making", "meɪk|ɪŋ"], // mak|ing
-  ["picture", "pɪk|tʃə"], // pic|ture
-  ["possible", "pɒ|sɪ|bl̩"], // pos|si|ble
-  ["professional", "pɹə|fɛ|ʃən|əl"], // pro|fes|sion|al
-  ["major", "meɪ|dʒə(ɹ)"], // ma|jor
+  ["over", "oʊ|vər"], // o|ver
+  ["power", "paʊ|ər"], // pow|er
+  ["every", "ɛvə|ri"], // eve|ry
+  ["history", "hɪs|tə|ri"], // his|to|ry
+  ["better", "bɛt|ər"], // bet|ter
+  ["offer", "ɔf|ər"], // of|fer
+  ["directory", "daɪ|rɛk|tə|ri"], // di|rec|to|ry
+  ["around", "ə|raʊn"], // a|round
+  ["memory", "mɛm|ə|ri"], // mem|o|ry
+  ["user", "ju|zər"], // us|er
+  ["different", "dɪf|ər|ənt"], // dif|fer|ent
+  //////////////
+  ["unscathed", "ən|skeɪðd"],
+  ["personal", "pər|sɪn|əɫ"], // per|son|al
+  ["poker", "poʊ|kər"], // pok|er
+  ["gallery", "ɡæɫ|ər|i"], // gal|ler|y
+  ["education", "ɛdʒ|ə|keɪ|ʃən"], // ed|u|ca|tion
 ];
 
 function vowelFormForLetters(letters: Array<string>): string {
@@ -542,12 +576,21 @@ export function evaluateSyllablization(
       // console.log(`✅ ${test} -> ${answer}`);
       right++;
     } else {
-      console.log(
-        `❌ ${pad(test, 15)}  Expect ${pad(answer, 20)}  got ${pad(
-          found ?? "",
-          20
-        )}   Reference: ${syllablizized.get(test)?.join("|")}`
-      );
+      const JSON_OUTPUT = false; // useful to fill in test cases
+      if (!JSON_OUTPUT) {
+        console.log(
+          `❌ ${pad(test, 15)}  Expect ${pad(answer, 20)}  got ${pad(
+            found ?? "",
+            20
+          )}   Reference: ${syllablizized.get(test)?.join("|")}`
+        );
+      } else {
+        console.log(
+          `["${test}", "${found ?? ""}"], // ${syllablizized
+            .get(test)
+            ?.join("|")}`
+        );
+      }
       wrong++;
     }
   }
@@ -593,17 +636,32 @@ async function loadSyllables(): Promise<Map<string, Array<string>>> {
  * return map like 'dictionary' => "ˈdɪkʃənəɹi"
  */
 async function loadPronunciations(): Promise<Map<string, string>> {
-  const content = await fs.readFile("./inputs/pronunciations.json", {
+  // const content = await fs.readFile("./inputs/pronunciations.json", {
+  //   encoding: "utf-8",
+  // });
+  // const data: { [key: string]: Array<string> } = JSON.parse(content);
+  const content = await fs.readFile("./inputs/en_US_IPA.txt", {
     encoding: "utf-8",
   });
-
-  const data: { [key: string]: Array<string> } = JSON.parse(content);
+  let data: { [key: string]: Array<string> } = {};
+  for (const line of content.split("\n")) {
+    if (line) {
+      const [word, ipas] = line.split("\t");
+      const [firstIpa] = ipas.split(",");
+      if (firstIpa) {
+        data[word] = [firstIpa.replace(/\//g, "")];
+      }
+    }
+  }
 
   let numUKPronunciationsAltered = 0;
 
   const pronunciations = new Map<string, string>();
   for (const [key, value] of Object.entries(data)) {
     let which = value[0];
+
+    /*
+    We no longer use potentially UK IPA, no need to remove UK patterns
 
     // seems like many of the first pronnciations are UK, replacing `-er` with `ə`
     // we prefer US because I'm biased, so just use a different pronunciation in those cases.
@@ -613,16 +671,14 @@ async function loadPronunciations(): Promise<Map<string, string>> {
         if (inIPA.test(which)) {
           const better = value.find((v) => !inIPA.test(v));
           if (better) {
-            /*
-            console.log(
-              "Replacing UK pronunciation %s  %s  %s.  (Rule: %s -> %s)",
-              pad(key, 15),
-              pad(which, 15),
-              pad(better, 15),
-              inWord,
-              inIPA
-            );
-            */
+            // console.log(
+            //   "Replacing UK pronunciation %s  %s  %s.  (Rule: %s -> %s)",
+            //   pad(key, 15),
+            //   pad(which, 15),
+            //   pad(better, 15),
+            //   inWord,
+            //   inIPA
+            // );
             numUKPronunciationsAltered++;
             which = better;
             break;
@@ -630,8 +686,14 @@ async function loadPronunciations(): Promise<Map<string, string>> {
         }
       }
     }
-    const filtered = (which as string) // take first given pronunciation....hopefully its the one we want
-      .replace(/['ˈˌˈ]/g, ""); // remove stress from IPA
+    */
+    // take first given pronunciation....hopefully its the one we want
+    const filtered = (which as string)
+      .replace(/['ˈˌˈ]/g, "") // remove stress from IPA
+      // replace r-colored vowels with digraph forms
+      .replace(/ɝ/g, "ər") // TODO should this be ɛr? no I don't think so
+      // normalize 'r's because they're hard to distinguish
+      .replace(/ɹ/g, "r");
     pronunciations.set(key, filtered);
   }
 
@@ -693,8 +755,7 @@ export async function loadSyllabalizedPronuncations(): Promise<
   // list of words in order of frequency, including their pronunciation and syllablization
   const orderedWordsWithPronunciations = wordsByFrequency
     .map((word): [string, Array<string>, string] | null => {
-      const syllable = syllables.get(word);
-      if (syllable == null) return null;
+      const syllable = syllables.get(word) ?? [word];
 
       const pronunciation = pronunciations.get(word);
       if (pronunciation == null) return null;
@@ -727,7 +788,117 @@ export async function loadSyllabalizedPronuncations(): Promise<
   );
   evaluateSyllablization(syllablizedPronuncations, syllables);
 
+  createLetterOrderedGraph(syllablizedPronuncations);
+
   return syllablizedPronuncations;
+}
+
+let nextNum = 1;
+function createLetterOrderedGraph(
+  syllablizedPronuncations: Array<[string, string]>
+) {
+  const graph: SonorityGraph = {
+    letter: undefined,
+    next: [],
+    count: 0,
+    id: nextNum++,
+  };
+  for (const [word, syllabification] of syllablizedPronuncations.slice(
+    0
+    // 100
+  )) {
+    for (const syllable of syllabification.split("|")) {
+      console.log(syllable);
+      let last = graph;
+      for (const letter of syllable) {
+        const existing = last.next.find((g) => g?.letter === letter);
+        if (existing) {
+          existing.count += 1;
+          last = existing;
+        } else {
+          const next = { letter, next: [], count: 1, id: nextNum++ };
+          last.next.push(next);
+          last = next;
+        }
+      }
+
+      // handle end of syllable
+      const existing = last.next.find((g) => g?.letter === undefined);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        const next = { letter: undefined, next: [], count: 1, id: nextNum++ };
+        last.next.push(next);
+      }
+    }
+  }
+
+  for (var i = 0; i < 10; i++) {
+    console.log("random syllable: ", getRandomSyllable(graph));
+  }
+
+  console.log("-----------");
+
+  printGraph(graph);
+}
+
+function randomChoice<T>(a: Array<T>): T {
+  return a[Math.floor(Math.random() * a.length)];
+}
+
+function getRandomSyllable(graph: SonorityGraph) {
+  let word = "";
+  let next = graph.next;
+  while (true) {
+    // TODO: weight by count sum
+    const choice = randomChoice(next);
+    if (choice?.letter) {
+      word += choice.letter;
+    } else {
+      break;
+    }
+    next = choice.next;
+  }
+  return word;
+}
+
+// b -> r -> o -> n
+//   -> l -> o
+//   -> o ----->
+
+// (pre-consonants)
+
+type SonorityGraph = {
+  id: number;
+  letter?: string;
+  next: Array<SonorityGraph | undefined>;
+  count: number;
+};
+
+async function printGraph(graph: SonorityGraph) {
+  const toPrint = [...graph.next];
+  let output = 'graph "" {';
+  const printed = new Set<SonorityGraph>();
+  while (toPrint.length) {
+    const g = toPrint.pop();
+    if (!g) continue;
+    if (printed.has(g)) continue;
+    printed.add(g);
+
+    output += `n${g.id};\n`;
+    output += `n${g.id} [label="${g?.letter ?? "END"}"];\n`;
+    for (const child of g.next) {
+      if (child) {
+        output += `n${g.id} -> n${child.id}\n`;
+        toPrint.push(child);
+      } else {
+        // end, TODO
+      }
+    }
+  }
+  output += "}";
+  await fs.writeFile("outputs/syllableGraph.graphviz", output);
+  console.log("wrote syllable graph");
 }
 
 // Tests / standalone
