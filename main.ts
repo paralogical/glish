@@ -50,7 +50,7 @@ async function main() {
   // const syllablizedPronuncations = await loadSyllabalizedPronuncations();
   // just use cached version
   const syllablizedPronuncations = JSON.parse(
-    await fs.readFile("./syllablizedIPA.json", {
+    await fs.readFile("./outputs/syllablizedIPA.json", {
       encoding: "utf-8",
     })
   ) as { [key: string]: string };
@@ -65,7 +65,7 @@ async function main() {
   const multiSyllable = entries.filter(([word, value]) => value.includes("|"));
 
   const seen = new Set();
-  const assignments = new Map();
+  const assignments = new Map<string, string>();
 
   for (const [word, syll] of oneSyllable) {
     seen.add(syll);
@@ -76,16 +76,44 @@ async function main() {
     const sylls = syllsStr.split("|");
     const firstunused = sylls.find((syll) => !seen.has(syll));
     if (firstunused == null) {
-      console.log("❌ couldnt assign %s, theyre all taken");
+      console.log("❌ couldnt assign %s, theyre all taken", word);
       // assignments.set(word, "???");
     } else {
       seen.add(firstunused);
       assignments.set(word, firstunused);
-      console.log("✅ assigned %s, theyre all taken");
+      console.log("✅ assigned %s -> %s", word, firstunused);
     }
   }
 
   console.log(assignments);
+  const monosyllabicResult: { [key: string]: string } = {};
+
+  for (const [word, syll] of entries) {
+    const mono = syll.includes("|") ? assignments.get(word) : syll;
+    if (mono) {
+      monosyllabicResult[word] = mono;
+    }
+  }
+
+  {
+    const resultWithSingleSyllFilename = "outputs/monosyllabic.json";
+    console.log(
+      "writing monosyllabic result to ",
+      resultWithSingleSyllFilename
+    );
+    await fs.writeFile(
+      resultWithSingleSyllFilename,
+      JSON.stringify(monosyllabicResult, undefined, 2)
+    );
+  }
+  {
+    const resultFilename = "outputs/monosyllabic_only_modified_words.json";
+    console.log("writing monosyllabic result to ", resultFilename);
+    await fs.writeFile(
+      resultFilename,
+      JSON.stringify(Object.fromEntries(assignments.entries()), undefined, 2)
+    );
+  }
 
   // console.log(syllablizedPronuncations);
   /*

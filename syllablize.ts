@@ -112,7 +112,7 @@ export function constuctSyllablizedPronunciation(
     // TODO: encourage vowel + consonant
     // TODO: check word vowel form: VCV not ok but CVC is fine
   }
-  let best = { score: -100000, partition: [] };
+  let best: typeof scores[0] = { score: -100000, partition: [] };
   for (const result of scores) {
     if (result.score > best.score) {
       best = result;
@@ -544,9 +544,9 @@ export function evaluateSyllablization(
     } else {
       console.log(
         `❌ ${pad(test, 15)}  Expect ${pad(answer, 20)}  got ${pad(
-          found,
+          found ?? "",
           20
-        )}   Reference: ${syllablizized.get(test).join("|")}`
+        )}   Reference: ${syllablizized.get(test)?.join("|")}`
       );
       wrong++;
     }
@@ -566,7 +566,7 @@ export function evaluateSyllablization(
  * return map like 'dictionary' => ['dic', 'tion', 'ar', 'y']
  */
 async function loadSyllables(): Promise<Map<string, Array<string>>> {
-  const content = await fs.readFile("./Syllables.txt", {
+  const content = await fs.readFile("./inputs/Syllables.txt", {
     encoding: "utf-8",
   });
 
@@ -593,7 +593,7 @@ async function loadSyllables(): Promise<Map<string, Array<string>>> {
  * return map like 'dictionary' => "ˈdɪkʃənəɹi"
  */
 async function loadPronunciations(): Promise<Map<string, string>> {
-  const content = await fs.readFile("./pronunciations.json", {
+  const content = await fs.readFile("./inputs/pronunciations.json", {
     encoding: "utf-8",
   });
 
@@ -653,7 +653,7 @@ const UKPatterns: Array<[RegExp, RegExp]> = [
 ];
 
 async function getWordsByFrequency(): Promise<Array<string>> {
-  const content = await fs.readFile("./word_frequency.txt", {
+  const content = await fs.readFile("./inputs/word_frequency.txt", {
     encoding: "utf-8",
   });
   const lines = content.split("\n");
@@ -692,7 +692,7 @@ export async function loadSyllabalizedPronuncations(): Promise<
 
   // list of words in order of frequency, including their pronunciation and syllablization
   const orderedWordsWithPronunciations = wordsByFrequency
-    .map((word): [string, Array<string>, string] => {
+    .map((word): [string, Array<string>, string] | null => {
       const syllable = syllables.get(word);
       if (syllable == null) return null;
 
@@ -718,10 +718,13 @@ export async function loadSyllabalizedPronuncations(): Promise<
   console.log("completed in %dms", new Date().valueOf() - t1);
 
   await fs.writeFile(
-    "syllablizedIPA.json",
+    "outputs/syllablizedIPA.json",
     JSON.stringify(Object.fromEntries(syllablizedPronuncations), undefined, 2)
   );
-  console.log("wrote syllablization file");
+  console.log(
+    "wrote syllablization file with %d syllablized pronunciations",
+    syllablizedPronuncations.length
+  );
   evaluateSyllablization(syllablizedPronuncations, syllables);
 
   return syllablizedPronuncations;
@@ -729,7 +732,7 @@ export async function loadSyllabalizedPronuncations(): Promise<
 
 // Tests / standalone
 if (require.main === module) {
-  const test = (word, expect) => {
+  const test = (word: string, expect: string) => {
     const found = vowelFormForLetters(word.split(""));
     console.log(found === expect ? "✅" : "❌", word, found, expect);
   };
