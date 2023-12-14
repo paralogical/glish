@@ -4,6 +4,13 @@ export function respellIPA(ipa: string): string {
   while (remain.length > 0) {
     let foundAny = false;
     for (const [replace, check] of respellKey) {
+      const ender = specialEnders.find(([, end]) => end === remain);
+      if (ender) {
+        accum += ender[0];
+        remain = "";
+        foundAny = true;
+        break;
+      }
       if (remain.startsWith(check)) {
         accum += replace;
         remain = remain.slice(check.length);
@@ -12,7 +19,7 @@ export function respellIPA(ipa: string): string {
       }
     }
     if (!foundAny) {
-      console.log('could not replace "%s"', remain[0]);
+      //   console.log('could not replace "%s"', remain[0]);
       accum += remain[0];
       remain = remain.slice(1);
     }
@@ -135,7 +142,7 @@ if (require.main === module) {
   test("jʊrəp", "yuurruhp");
   test("tɑpɪks", "tahpiks");
   test("bæd", "bad");
-  test("vɪ", "vi");
+  test("vɪ", "vih");
   test("tɪps", "tips");
   test("pɫəs", "pluhs");
   test("ɔtoʊ", "awtoh");
@@ -146,10 +153,14 @@ if (require.main === module) {
   test("fæst", "fast");
   test("fækt", "fakt");
   test("junət", "yoonuht");
-  test("ɡɛ", "ge");
+  test("ɡɛ", "geh");
   test("tɛk", "tek");
   test("mit", "meet");
   test("fɑr", "fahr");
   test("ɛn", "en");
   test("prɑdʒɛks", "prahjeks");
+  // special enders
+  test("ɪnɪ", "inih");
+  test("ʌnʌ", "unuh");
+  test("ɛnɛ", "eneh");
 }

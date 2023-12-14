@@ -1,6 +1,10 @@
 import { promises as fs } from "fs";
 import { respellIPA } from "./respellIPA";
 import {
+  createSonorityGraph,
+  getRandomSyllableFromPallete,
+} from "./sonorityGraph";
+import {
   constuctSyllablizedPronunciations,
   evaluateSyllablization,
   loadSyllabalizedPronuncations,
@@ -73,6 +77,9 @@ async function main() {
     // assignments.set(word, syll);
   }
 
+  // TODO; we could cache this graph instead of remaking it here
+  const graph = createSonorityGraph(entries);
+
   let assignSuccesses = [];
 
   // for (const [word, syllsStr] of multiSyllable.slice(0, 500)) {
@@ -80,6 +87,25 @@ async function main() {
     const sylls = syllsStr.split("|");
     const firstunused = sylls.find((syll) => !seen.has(syll));
     if (firstunused == null) {
+      // try random palette
+      let assiendWithRandom = false;
+      for (let i = 0; i < 1000; i++) {
+        const generatedSyl = getRandomSyllableFromPallete(
+          graph,
+          sylls.join("")
+        );
+        if (!seen.has(generatedSyl)) {
+          seen.add(generatedSyl);
+          assignments.set(word, generatedSyl);
+          assignSuccesses.push(true);
+          console.log("✅ assigned %s -> %s", word, generatedSyl);
+          assiendWithRandom = true;
+        }
+      }
+      if (assiendWithRandom) {
+        continue;
+      }
+
       console.log("❌ couldnt assign %s, theyre all taken", word);
       assignments.set(word, `#${word}#`);
       assignSuccesses.push(false);
@@ -98,9 +124,12 @@ async function main() {
     (100 * assignSuccesses.slice(0, 5000).filter(Boolean).length) / 5000;
   const first50000Success =
     (100 * assignSuccesses.slice(0, 50000).filter(Boolean).length) / 50000;
+  const totalSuccess =
+    (100 * assignSuccesses.filter(Boolean).length) / assignSuccesses.length;
   console.log("first 500 success rate:", first500Success);
   console.log("first 5000 success rate:", first5000Success);
   console.log("first 50000 success rate:", first50000Success);
+  console.log("total success rate:", totalSuccess);
 
   const monosyllabicResult: { [key: string]: string } = {};
 

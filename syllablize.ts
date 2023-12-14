@@ -1,6 +1,12 @@
 import { promises as fs } from "fs";
 import { groupIPASymbols, iteratePartitions } from "./partition";
+import {
+  createSonorityGraph,
+  getRandomSyllable,
+  printGraph,
+} from "./sonorityGraph";
 import { pad } from "./util";
+import * as util from "util";
 
 /*
 Given a word, plus its syllablization plus its IPA pronunciation,
@@ -191,7 +197,7 @@ export function constuctSyllablizedPronunciation(
 const disourcedByItself = new Set(["r", "ɹ", "g", "w", "ɡ", "t"]);
 
 // used for preventing only-consonant syllables
-const consonantsOrExtra = new Set(
+export const consonantsOrExtra = new Set(
   ".bcdfghjklmnpqrstvwxz" +
     "dʒ" +
     "l̥" +
@@ -788,117 +794,20 @@ export async function loadSyllabalizedPronuncations(): Promise<
   );
   evaluateSyllablization(syllablizedPronuncations, syllables);
 
-  createLetterOrderedGraph(syllablizedPronuncations);
+  console.log("create graph");
 
-  return syllablizedPronuncations;
-}
+  const graph = createSonorityGraph(syllablizedPronuncations);
 
-let nextNum = 1;
-function createLetterOrderedGraph(
-  syllablizedPronuncations: Array<[string, string]>
-) {
-  const graph: SonorityGraph = {
-    letter: undefined,
-    next: [],
-    count: 0,
-    id: nextNum++,
-  };
-  for (const [word, syllabification] of syllablizedPronuncations.slice(
-    0
-    // 100
-  )) {
-    for (const syllable of syllabification.split("|")) {
-      console.log(syllable);
-      let last = graph;
-      for (const letter of syllable) {
-        const existing = last.next.find((g) => g?.letter === letter);
-        if (existing) {
-          existing.count += 1;
-          last = existing;
-        } else {
-          const next = { letter, next: [], count: 1, id: nextNum++ };
-          last.next.push(next);
-          last = next;
-        }
-      }
-
-      // handle end of syllable
-      const existing = last.next.find((g) => g?.letter === undefined);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        const next = { letter: undefined, next: [], count: 1, id: nextNum++ };
-        last.next.push(next);
-      }
-    }
-  }
-
-  for (var i = 0; i < 10; i++) {
+  for (var i = 0; i < 20; i++) {
     console.log("random syllable: ", getRandomSyllable(graph));
   }
 
   console.log("-----------");
 
-  printGraph(graph);
-}
+  await fs.writeFile("outputs/syllableGraph.graphviz", printGraph(graph));
+  console.log("wrote graphviz");
 
-function randomChoice<T>(a: Array<T>): T {
-  return a[Math.floor(Math.random() * a.length)];
-}
-
-function getRandomSyllable(graph: SonorityGraph) {
-  let word = "";
-  let next = graph.next;
-  while (true) {
-    // TODO: weight by count sum
-    const choice = randomChoice(next);
-    if (choice?.letter) {
-      word += choice.letter;
-    } else {
-      break;
-    }
-    next = choice.next;
-  }
-  return word;
-}
-
-// b -> r -> o -> n
-//   -> l -> o
-//   -> o ----->
-
-// (pre-consonants)
-
-type SonorityGraph = {
-  id: number;
-  letter?: string;
-  next: Array<SonorityGraph | undefined>;
-  count: number;
-};
-
-async function printGraph(graph: SonorityGraph) {
-  const toPrint = [...graph.next];
-  let output = 'graph "" {';
-  const printed = new Set<SonorityGraph>();
-  while (toPrint.length) {
-    const g = toPrint.pop();
-    if (!g) continue;
-    if (printed.has(g)) continue;
-    printed.add(g);
-
-    output += `n${g.id};\n`;
-    output += `n${g.id} [label="${g?.letter ?? "END"}"];\n`;
-    for (const child of g.next) {
-      if (child) {
-        output += `n${g.id} -> n${child.id}\n`;
-        toPrint.push(child);
-      } else {
-        // end, TODO
-      }
-    }
-  }
-  output += "}";
-  await fs.writeFile("outputs/syllableGraph.graphviz", output);
-  console.log("wrote syllable graph");
+  return syllablizedPronuncations;
 }
 
 // Tests / standalone
