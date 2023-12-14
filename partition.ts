@@ -116,8 +116,6 @@ const IPASymbolGroups = [
   "m",
 ];
 
-console.log(groupIPASymbols("sɒsɪd͡ʒ").join("  "));
-
 /** split this string into letters, except keep IPA symbols together
  * when they form multi-letter sequences or dipthongs, like [dʒ] or [eɪ]
  */
@@ -191,14 +189,17 @@ function test(expect: Array<string>, str: string, num: number) {
   }
 }
 
-test(["abcd"], "abcd", 1);
-test(["a|bcd", "ab|cd", "abc|d"], "abcd", 2);
-test(["a|b|cd", "a|bc|d", "ab|c|d"], "abcd", 3);
-test(
-  ["a|b|cde", "a|bc|de", "a|bcd|e", "ab|c|de", "ab|cd|e", "abc|d|e"],
-  "abcde",
-  3
-);
+if (require.main === module) {
+  console.log(groupIPASymbols("sɒsɪd͡ʒ").join("  "));
+  test(["abcd"], "abcd", 1);
+  test(["a|bcd", "ab|cd", "abc|d"], "abcd", 2);
+  test(["a|b|cd", "a|bc|d", "ab|c|d"], "abcd", 3);
+  test(
+    ["a|b|cde", "a|bc|de", "a|bcd|e", "ab|c|de", "ab|cd|e", "abc|d|e"],
+    "abcde",
+    3
+  );
 
-// dipthongs are interpreted as single units
-test(["a|bɑːd", "ab|ɑːd", "abɑː|d"], "abɑːd", 2);
+  // dipthongs are interpreted as single units
+  test(["a|bɑːd", "ab|ɑːd", "abɑː|d"], "abɑːd", 2);
+}
