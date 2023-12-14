@@ -107,6 +107,7 @@ const respellKey = [
   ["n", "n"],
   ["ng", "ŋ"],
   ["p", "p"],
+  ["r", "ɹ"],
   ["r", "r"],
   ["s", "s"],
   //   ["ss", "s"], // /s/ may be respelled ss instead of s when otherwise it may be misinterpreted as /z/: "ice" EYESS, "tense" TENSS (compare eyes, tens).

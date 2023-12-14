@@ -1,21 +1,30 @@
-// 3 connected subgraphs
-// within each part, letters are connected together
 import * as util from "util";
 import { progress } from "./util";
 
-// there are multiple edges
+/**
+ * A graph with three connected subgraphs, corresponding to the parts of a syllable.
+ * letters in the onset correspond to consants before the vowel.
+ * letters in the vowel part are vowels
+ * letters in the coda are consonants after the vowel
+ *
+ * Within each part, letters may have edges pointing to each other in that part, or to
+ * a letter in the next part.
+ * Letters may never point backward to previous parts (e.g. vowels cannot point into the onset)
+ * There will be duplicate letters in the onset and the coda, because they
+ * represent different parts of the syllable.
+ */
 export type SonorityGraph = {
   // onset, nucleus, coda
   parts: [SonorityGraphPart, SonorityGraphPart, SonorityGraphPart];
 };
 
-const STOP = undefined;
-const START = undefined;
+const STOP = null;
+const START = null;
 // letter -> [nextLetter | STOP, count]
 // note: letter may not be in this graph part. if not, look at next graph part.
-// undefined as next letter means stop
-// undefined as letter (key in map) means start. (only for onset)
-// undefined -> [undefined, count] means how often this graph part is skipped (no onset)
+// null as next letter means stop
+// null as letter (key in map) means start. (only for onset)
+// null -> [null, count] means how often this graph part is skipped (no onset)
 export type SonorityGraphPart = Map<
   string | typeof START,
   Array<[string | typeof STOP, number]>
@@ -55,17 +64,17 @@ function updateGraphPart(
   graphPart: SonorityGraphPart,
   letters: Array<string>,
   // first phone of next part
-  nextPart: string | undefined
+  nextPart: string | null
 ) {
   // initial part of graph
   if (which === "onset") {
-    incGraphPart(graphPart, undefined, letters?.[0] ?? nextPart);
+    incGraphPart(graphPart, null, letters?.[0] ?? nextPart);
   }
-  if (letters == undefined) {
+  if (letters == null) {
     return;
   }
 
-  let letter: string | undefined = letters[0];
+  let letter: string | null = letters[0] ?? null;
   for (const next of [...letters.slice(1), nextPart]) {
     incGraphPart(graphPart, letter, next);
     letter = next;
@@ -74,13 +83,13 @@ function updateGraphPart(
 
 function incGraphPart(
   graphPart: SonorityGraphPart,
-  letter: string | undefined,
-  next: string | undefined
+  letter: string | null,
+  next: string | null
 ) {
   const existing = graphPart.get(letter);
   if (existing) {
     const existingNext = existing.find((e) => e[0] === next);
-    let updated: Array<[string | undefined, number]>;
+    let updated: Array<[string | null, number]>;
     if (existingNext) {
       existingNext[1] += 1;
     } else {
@@ -93,23 +102,19 @@ function incGraphPart(
 }
 
 export function printGraph(graph: SonorityGraph) {
-  const printGraphPart = (
-    i: number,
-    label: string,
-    part: SonorityGraphPart
-  ): string => {
-    return `subgraph cluster_${i} {
-        color = "blue";
-        label = "${label}";
-${[...part.keys()]
-  .filter((letter) => letter !== undefined)
-  .map((letter) => `${label}_${letter} [label="${letter}"];`)
-  .join("\n")}
+  let next = 1;
+  const assignedIds: { [key: string]: number } = {};
+  const idForNode = (nodeName: string): number => {
+    if (assignedIds[nodeName] == null) {
+      assignedIds[nodeName] = next++;
     }
-    `;
+    return assignedIds[nodeName];
   };
 
-  const nodeName = (letter: string | undefined, atOrAfter: number) => {
+  const nodes: Array<{ id: number; label: string; group: number }> = [];
+  const edges: Array<{ from: number; to: number; value: number }> = [];
+
+  const nodeName = (letter: string | null, atOrAfter: number) => {
     let pref;
     if (atOrAfter === 0 && graph.parts[0].has(letter)) {
       pref = "onset";
@@ -118,48 +123,56 @@ ${[...part.keys()]
     } else if (atOrAfter > 0 && graph.parts[2].has(letter)) {
       pref = "coda";
     }
-    if (letter == undefined) {
+    if (letter == null) {
       return "end";
     }
 
     return `${pref}_${letter}`;
   };
 
-  const edges: Array<string> = [];
-  const starts = graph.parts[0].get(undefined);
-  edges.push(...starts!.map(([letter]) => `st -> ${nodeName(letter, 0)};`));
+  const starts = graph.parts[0].get(null);
+  edges.push(
+    ...starts!.map(([letter, value]) => ({
+      from: idForNode("st"),
+      to: idForNode(nodeName(letter, 0)),
+      value: value,
+    }))
+  );
   let i = 0;
   for (const part of graph.parts) {
     edges.push(
-      [...part.entries()]
-        .filter(([letter]) => letter !== undefined)
+      ...[...part.entries()]
+        .filter(([letter]) => letter != null)
         .map(([letter, nexts]) =>
-          nexts
-            .map(([next]) => `${nodeName(letter, i)} -> ${nodeName(next, i)};`)
-            .join("\n")
+          nexts.map(([next, value]) => ({
+            from: idForNode(nodeName(letter, i)),
+            to: idForNode(nodeName(next, i)),
+            value: value,
+          }))
         )
-        .join("\n")
+        .flat()
     );
     i += 1;
   }
 
-  const output = `
-  digraph "Sonority" {
-    rankdir=LR;
-    graph [fontsize=10 fontname="Verdana" compound=true];
-    node [shape=record fontsize=10 fontname="Verdana"];
+  nodes.push({ id: idForNode("st"), label: "Start", group: 1 });
+  nodes.push({ id: idForNode("end"), label: "End", group: 5 });
 
-    st [label="Start"];
-    end [label="End"];
-    
-    ${edges.join("\n")}
+  nodes.push(
+    ...graph.parts
+      .map((part, i) =>
+        [...part.keys()]
+          .filter((letter) => letter != null)
+          .map((letter) => ({
+            id: idForNode(`${["onset", "vowel", "coda"][i]}_${letter}`),
+            label: letter ?? "null",
+            group: i + 1,
+          }))
+      )
+      .flat()
+  );
 
-    ${printGraphPart(0, "onset", graph.parts[0])}
-    ${printGraphPart(1, "vowel", graph.parts[1])}
-    ${printGraphPart(2, "coda", graph.parts[2])}
-}
-  `;
-  return output;
+  return JSON.stringify({ nodes, edges }, undefined, 2);
 }
 
 function randomChoice<T>(a: Array<T>): T {
@@ -181,19 +194,36 @@ function weightedRandomChoice<T>(a: Array<[T, number]>): T {
 
 export function getRandomSyllable(graph: SonorityGraph): Array<string> {
   let word = [];
-  let next = weightedRandomChoice(graph.parts[0].get(undefined)!);
+  let next = weightedRandomChoice(graph.parts[0].get(null)!);
+
+  // track how often we use each phone, so we don't keep repeating stststs
+  let phoneCounts = new Map<string, number>();
 
   let currentPart = 0;
   while (next && currentPart < 3) {
+    const existing = phoneCounts.get(next);
+    phoneCounts.set(next, existing ? existing + 1 : 1);
+
     word.push(next);
+
     let graphPart;
     if (graph.parts[currentPart].has(next)) {
       graphPart = graph.parts[currentPart];
     } else {
       currentPart++;
+      phoneCounts = new Map(); // reset so we only count within a syllable part
       graphPart = graph.parts[currentPart];
     }
-    next = weightedRandomChoice(graphPart.get(next)!);
+    next = weightedRandomChoice(
+      graphPart.get(next)!.filter(([p]) => {
+        if (p == null) {
+          return true;
+        }
+        const count = phoneCounts.get(p) ?? 0;
+        // allow the same letter up to twice, so asks is ok but iststs is not
+        return count < 2;
+      })
+    );
   }
 
   return word;
@@ -202,22 +232,22 @@ export function getRandomSyllable(graph: SonorityGraph): Array<string> {
 export function getRandomSyllableFromPallete(
   graph: SonorityGraph,
   pallete: Array<string>
-): Array<string> | undefined {
+): Array<string> | null {
   let word = [];
   // TODO: remove from palette as you usefrom a graph,
   // so kstrtruhr is not possible (repeated t and r in onset)
-  const randomTilInPalete = (from: Array<[string | undefined, number]>) => {
+  const randomTilInPalete = (from: Array<[string | null, number]>) => {
     const filteredFrom = from.filter(
-      ([l]) => l === undefined || pallete.includes(l!)
+      ([l]) => l == null || pallete.includes(l!)
     );
     if (filteredFrom.length === 0) {
-      return undefined;
+      return null;
     }
     return weightedRandomChoice(filteredFrom);
   };
-  let next = randomTilInPalete(graph.parts[0].get(undefined)!);
-  if (next === undefined) {
-    return undefined;
+  let next = randomTilInPalete(graph.parts[0].get(null)!);
+  if (next == null) {
+    return null;
   }
 
   let currentPart = 0;
@@ -236,8 +266,6 @@ export function getRandomSyllableFromPallete(
   return word;
 }
 
-// const consonantsOrExtra = new Set("bcdfghjklmnpqrstvwxzʒ̥ʰ͡(ɹ)ðʃθɡŋʍɫ˨ʔɾɵɯ");
-// const vowels = new Set("aɪəɔʊɛjɜːuʌɒoɑæei");
 const vowels = new Set([
   "a",
   "ɑ", // ɑ or ɒ
@@ -370,10 +398,10 @@ if (require.main === module) {
   console.log(printGraph(graph));
 
   for (var i = 0; i < 10; i++) {
-    console.log("random syllable: ", getRandomSyllable(graph));
+    console.log("random syllable: ", getRandomSyllable(graph).join(""));
   }
 
-  for (var i = 0; i < 10; i++) {
+  for (var i = 0; i < 3; i++) {
     const palette = ["b", "u", "n", "i", "d", "t", "a", "s", "w"];
     console.log(
       "random syllable in palette: ",

@@ -1,4 +1,4 @@
-# Monosyllabic
+# Glish
 
 **Goal: Make a version of English where every word is only one syllable**
 
@@ -16,3 +16,7 @@ syllablize.ts -> convert CMU dict to JSON mapping of word -> IPA split by syllab
 main.ts -> load IPA syllables and generate new monosyllabic version of all words
 sonorityGraph.ts -> data structure that helps generate new syllables following sonority sequencing.
 respellIPA.ts -> convert IPA back into "readable" latin alphabet.
+
+To run,
+`ts-node syllablize.ts` to generate outputs/syllablizedIPA.json + syllableGraph + big list of randomly generated syllables
+`ts-node main.ts` to generate outputs/monosyllabic.json & other monosyllabic results

@@ -6,7 +6,7 @@ import {
   SonorityGraph,
   SonorityGraphPart,
 } from "./sonorityGraph";
-import { pad, progress } from "./util";
+import { oneSigFig, pad, progress } from "./util";
 import * as util from "util";
 
 async function getWordsByFrequency(): Promise<Array<string>> {
@@ -152,28 +152,32 @@ export async function loadSyllabalizedPronuncations(): Promise<
 
   const stringGraphPart = (part: SonorityGraphPart) => {
     return Object.fromEntries(
-      [...part.entries()].map(([k, v]) => [k === undefined ? null : k, v])
+      [...part.entries()].map(([k, v]) => [k == undefined ? null : k, v])
     );
   };
   await fs.writeFile(
     "outputs/syllableGraph.json",
-    util.inspect(
+    JSON.stringify(
       {
         onset: stringGraphPart(graph.parts[0]),
         vowel: stringGraphPart(graph.parts[1]),
         coda: stringGraphPart(graph.parts[2]),
       },
       undefined,
-      10
+      2
     )
   );
   console.log("wrote syllable graph");
 
-  await fs.writeFile("outputs/syllableGraph.graphviz", printGraph(graph));
+  await fs.writeFile(
+    "ui/public/syllableGraphDisplayData.json",
+    printGraph(graph)
+  );
   console.log("wrote graphviz");
 
-  console.log("creating lots of random syllables");
-  await bulkGenerateSyllables(graph);
+  // Uncomment this to generate random syllables (takes a few minutes)
+  // console.log("creating lots of random syllables");
+  // await bulkGenerateSyllables(graph);
 
   console.log("-----------");
 
@@ -195,7 +199,7 @@ async function bulkGenerateSyllables(graph: SonorityGraph) {
     syllables.set(joined, s);
     if (j % 100 === 0) {
       process.stdout.write("\u001b[2K");
-      progress(j, N, joined);
+      progress(j, N, oneSigFig((100 * j) / N) + "% " + joined);
     }
   }
   console.log();

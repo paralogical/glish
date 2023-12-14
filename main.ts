@@ -7,8 +7,6 @@ import {
 import { oneSigFig, progress } from "./util";
 
 async function main() {
-  // const syllablizedPronuncations = await loadSyllabalizedPronuncations();
-  // just use cached version
   const syllablizedPronuncations = JSON.parse(
     await fs.readFile("./outputs/syllablizedIPA.json", {
       encoding: "utf-8",
@@ -22,17 +20,10 @@ async function main() {
     ([word, syllalbles]) => syllalbles.length > 1
   );
 
-  const seen = new Set<string>();
-  const assignments = new Map<string, Array<string>>();
-
-  for (const [word, syll] of oneSyllable) {
-    seen.add(syll.join(""));
-    // assignments.set(word, syll);
-  }
-
   // TODO; we could cache this graph instead of remaking it here
-  console.log("generating sonority graph...");
+  console.log("Generating sonority graph...");
   const graph = createSonorityGraph(syllablizedPronuncations);
+  console.log();
 
   const randomSyllables = new Map(
     JSON.parse(
@@ -45,22 +36,65 @@ async function main() {
   let assignResults: Array<boolean> = [];
   let assignSuccesses = 0;
   let assignFails = 0;
-  let directAssigns = 0;
-  let graphAssigns = 0;
-  let randomFancyAssigns = 0;
-  let randomDumbAssigns = 0;
-
-  const assign = (word: string, value: Array<string>) => {
-    const joined = value.join("");
-    seen.add(joined);
-    assignments.set(word, value);
-    assignSuccesses++;
-    assignResults.push(true);
-    randomSyllables.delete(joined);
-    // console.log("✅ assigned %s -> %s", word, generatedSyl);
+  type Method =
+    | "direct"
+    | "graph"
+    | "choice"
+    | "random"
+    | "failed"
+    | "alreadyOneSyllable";
+  const assignMethod: { [key in Method]: number } = {
+    direct: 0,
+    graph: 0,
+    choice: 0,
+    random: 0,
+    failed: 0,
+    alreadyOneSyllable: 0,
   };
 
-  console.log("assigning monosyllabic values...");
+  const seen = new Set<string>();
+  type Assignment = {
+    mono: string;
+    respelled: string;
+    method: Method;
+    numSyllables: number;
+  };
+  const assignments = new Map<string, Assignment>();
+
+  const assign = (
+    word: string,
+    value: Array<string>,
+    method: Method,
+    previousNumSylls: number
+  ) => {
+    const joined = value.join("");
+    seen.add(joined);
+    assignments.set(word, {
+      mono: joined,
+      respelled: respellIPA(joined),
+      method,
+      numSyllables: previousNumSylls,
+    });
+    assignMethod[method]++;
+    if (method !== "alreadyOneSyllable") {
+      method != "failed" ? assignSuccesses++ : assignFails++;
+    }
+    assignResults.push(method != "failed");
+    randomSyllables.delete(joined);
+  };
+
+  for (const [word, syll] of oneSyllable) {
+    assign(word, syll[0], "alreadyOneSyllable", 1);
+  }
+  console.log(
+    `${assignMethod.alreadyOneSyllable} / ${syllablizedPronuncations.length} words already one syllable ` +
+      `(${oneSigFig(
+        (100 * assignMethod.alreadyOneSyllable) /
+          syllablizedPronuncations.length
+      )}%)`
+  );
+
+  console.log("Assigning monosyllabic values...");
   let i = 0;
   for (const [word, sylls] of multiSyllable) {
     // print progress
@@ -69,7 +103,7 @@ async function main() {
       progress(
         i,
         multiSyllable.length,
-        `${i}/${multiSyllable.length}.    ${directAssigns} direct, ${graphAssigns} graph, ${randomFancyAssigns} fancy, ${randomDumbAssigns} dumb, ${assignFails} fails`
+        `${i}/${multiSyllable.length}.    ${assignMethod.direct} direct, ${assignMethod.graph} graph, ${assignMethod.choice} choice, ${assignMethod.random} random, ${assignMethod.failed} fails`
       );
     }
     i += 1;
@@ -78,25 +112,27 @@ async function main() {
     {
       const firstunused = sylls.find((syll) => !seen.has(syll.join("")));
       if (firstunused != null) {
-        directAssigns++;
-        assign(word, firstunused);
+        assign(word, firstunused, "direct", sylls.length);
         continue;
       }
     }
 
-    // try random palette
+    // TODO: We might get even nicer results in the mid-common range by
+    // trying to look for random syllables which are in-order subsets of the original,
+    // e.g. farming -> frɪŋ, since random graph tends to discard ordering (mɪrf) .
+
+    // try using graph with random palette
     {
-      let assiendWithRandom = false;
+      let assinedWithRandom = false;
       for (let i = 0; i < 1000; i++) {
         const generatedSyl = getRandomSyllableFromPallete(graph, sylls.flat());
         if (generatedSyl && !seen.has(generatedSyl.join(""))) {
-          graphAssigns++;
-          assign(word, generatedSyl);
-          assiendWithRandom = true;
+          assign(word, generatedSyl, "graph", sylls.length);
+          assinedWithRandom = true;
           break;
         }
       }
-      if (assiendWithRandom) {
+      if (assinedWithRandom) {
         continue;
       }
     }
@@ -132,26 +168,21 @@ async function main() {
           }
         }
 
-        randomFancyAssigns++;
-        assign(word, best[0]!);
+        assign(word, best[0]!, "choice", sylls.length);
         continue;
       }
 
       // if we didn't find a decent match, just use the first available
       if (randomSyllables.size > 0) {
         const [rand] = randomSyllables;
-        randomDumbAssigns++;
-        assign(word, rand[1]);
+        assign(word, rand[1], "random", sylls.length);
 
         continue;
       }
     }
 
     // fallback -> we failed to assign anything
-    // console.log("❌ couldnt assign %s, theyre all taken", word);
-    assignments.set(word, ["#", ...word, "#"]);
-    assignFails++;
-    assignResults.push(false);
+    assign(word, ["[", ...word, "]"], "failed", sylls.length);
   }
   console.log(); // last progress bar printed `\r`, newline to leave it
 
@@ -160,82 +191,64 @@ async function main() {
       multiSyllable.length
     }`
   );
-  const firstNth = (n: number) =>
-    (100 * assignResults.slice(0, n).filter(Boolean).length) / n;
-  console.log("first 500 success rate:", oneSigFig(firstNth(500)));
-  console.log("first 5000 success rate:", oneSigFig(firstNth(5000)));
-  console.log("first 15000 success rate:", oneSigFig(firstNth(15000)));
+  const [totalSyllables, newTotalSyllables] = [...assignments.values()]
+    .filter((a) => a.method !== "failed")
+    .reduce((prev, a) => [prev[0] + a.numSyllables, prev[1] + 1], [0, 0]);
+  console.log(
+    `Removed ${totalSyllables - newTotalSyllables} syllables (${oneSigFig(
+      (100 * (totalSyllables - newTotalSyllables)) / totalSyllables
+    )}%)`
+  );
 
-  const monosyllabicResult: { [key: string]: string } = {};
-
-  for (const [word, sylls] of syllablizedPronuncations) {
-    const mono = sylls.length > 1 ? assignments.get(word) : sylls[0];
-    if (mono) {
-      monosyllabicResult[word] = mono.join("");
-      // TODO: we should do the respell before joining
+  // sanity check that there's no duplicates
+  {
+    const seenIpa = new Set();
+    let duplicates: Array<[string, Assignment]> = [];
+    console.log("Testing if there are duplicates...");
+    for (const [word, entry] of assignments.entries()) {
+      // don't warn about duplicates for words that were already one syllable.
+      // such duplicates are expected: "There" / "their"
+      if (entry.method !== "alreadyOneSyllable" && seenIpa.has(entry.mono)) {
+        duplicates.push([word, entry]);
+      }
+      seenIpa.add(entry.mono);
+    }
+    if (duplicates.length > 0) {
+      console.log(
+        `${duplicates.length} Duplicates detected: ${duplicates
+          .slice(0, 5)
+          .map((d) => `${d[0]} -> ${d[1].mono} (${d[1].method})`)}`
+      );
     }
   }
 
+  // write out main result: JSON mapping of words (+metadata)
   {
     const resultWithSingleSyllFilename = "outputs/monosyllabic.json";
     console.log(
-      "writing monosyllabic result to ",
+      "Writing monosyllabic result to ",
       resultWithSingleSyllFilename
     );
     await fs.writeFile(
       resultWithSingleSyllFilename,
-      JSON.stringify(monosyllabicResult, undefined, 2)
+      JSON.stringify([...assignments.entries()], undefined, 2)
     );
   }
+
+  // write out front-end optimized consumable json to power translator tool
   {
-    const resultFilename = "outputs/monosyllabic_only_modified_words.json";
-    console.log("writing monosyllabic result to ", resultFilename);
-    await fs.writeFile(
-      resultFilename,
-      JSON.stringify(Object.fromEntries(assignments.entries()), undefined, 2)
-    );
-  }
-  {
-    const respelledResult = "outputs/respelled.json";
-    console.log("writing respelled monosyllabic result to ", respelledResult);
-    await fs.writeFile(
-      respelledResult,
-      JSON.stringify(
-        Object.fromEntries(
-          Object.entries(monosyllabicResult).map(([word, mono]) => [
-            word,
-            respellIPA(mono),
-          ])
-        ),
-        undefined,
-        2
-      )
-    );
-  }
-  {
-    const resultFilename = "monosyllable-ui/src/routes/monosyllabic.ts";
+    const resultFilename = "ui/public/monosyllabic.json";
     console.log(
-      "writing ui-consumable monosyllabic result to ",
+      "Writing ui-consumable monosyllabic result to ",
       resultFilename
     );
     await fs.writeFile(
       resultFilename,
-      "export const monosyllabic = new Map<string, {mono: string, respelled_mono: string, multiSyllable: boolean}>(" +
-        JSON.stringify(
-          Object.entries(monosyllabicResult).map(([word, mono]) => {
-            return [
-              word,
-              {
-                mono,
-                multiSyllable: assignments.has(word),
-                respelled_mono: respellIPA(mono),
-              },
-            ];
-          }),
-          undefined,
-          2
-        ) +
-        ");"
+      JSON.stringify(
+        [...assignments.entries()].map(([word, result]) => {
+          return [word, result.mono, result.respelled, result.numSyllables];
+        })
+      )
     );
   }
 
