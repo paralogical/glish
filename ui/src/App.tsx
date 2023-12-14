@@ -178,14 +178,14 @@ function Editor({ monosyllabic }: { monosyllabic: MonosyllabicData }) {
 
       <div className="legend">
         <span>
-          <span className="translated mono">bold</span>=multi-syllable word
+          <span className="translated mono">bold</span> = multi-syllable word
         </span>
         <span>
-          <span className="translated oneSyllable">plain</span>=already
-          mono-syllable word
+          <span className="translated oneSyllable">plain</span> = already
+          monosyllabic word
         </span>
         <span>
-          <span className="translated unknown">red</span>=unknown word
+          <span className="translated unknown">red</span> = unknown word
         </span>
       </div>
     </div>

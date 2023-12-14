@@ -77,7 +77,6 @@ h1 {
 }
 
 .input {
-  /* width: 500px; */
   height: 1000px;
   max-height: 60vh;
 }
@@ -85,7 +84,7 @@ h1 {
   white-space: pre-wrap;
   display: flex;
   flex-direction: row;
-  gap: 1ch;
+  gap: 1ch 0.5ch;
   flex-wrap: wrap;
   height: min-content;
 }
@@ -133,6 +132,7 @@ h1 {
 .converted-byline {
   display: flex;
   flex-direction: row;
+  align-items: center;
   gap: 10px;
   margin-block: 10px;
 }
