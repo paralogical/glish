@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import {
   createSonorityGraph,
   getRandomSyllable,
+  loadSonorityGraph,
   printGraph,
   SonorityGraph,
   SonorityGraphPart,
@@ -80,15 +81,29 @@ const APRABET_TO_IPA: { [key: string]: string } = {
 };
 
 /**
- * Construct ordered list of syllablized pronunciations
- * map of word -> IPA split into syllables by |
- * ordered by usage of the word (common words first)
- * ['business', [ ["b", "ɪ", "z"], ["n", "ʌ", "s"] ]]
- * words not in frequency list are appended to the end
+ * Ordered word ->  syllable arrays
+ * very -> [ [v, ɛ], [ɹ, i] ]
+ * */
+export type SyllablizedIPA = Array<[string, Array<Array<string>>]>;
+
+const syllabilizedIpaFile = "outputs/syllablizedIPA.json";
+
+/**
+ * Load previously written syllabized IPA from disk.
+ * If it doesn't exist, generate anew.
  */
-export async function loadSyllabalizedPronuncations(): Promise<
-  Array<[string, Array<Array<string>>]>
-> {
+export async function loadSyllabilizedIpa(): Promise<SyllablizedIPA> {
+  try {
+    const ipa = await fs.readFile(syllabilizedIpaFile, "utf8");
+    const result = JSON.parse(ipa) as SyllablizedIPA;
+    console.log("Loaded cached syllabilized IPA");
+    return result;
+  } catch (err) {
+    return generatedSyllabilizedIpa();
+  }
+}
+
+async function generatedSyllabilizedIpa(): Promise<SyllablizedIPA> {
   const wordsByFrequency = await getWordsByFrequency();
   const wordSet = new Set(wordsByFrequency);
 
@@ -127,7 +142,7 @@ export async function loadSyllabalizedPronuncations(): Promise<
 
   console.log("sorting by frequency...");
 
-  const orderedResult: Array<[string, Array<Array<string>>]> = [];
+  const orderedResult: SyllablizedIPA = [];
   // insert syllablized one by one
   for (const word of wordsByFrequency) {
     const found = ipaSyllables[word];
@@ -142,32 +157,37 @@ export async function loadSyllabalizedPronuncations(): Promise<
   console.log("writing syllabized ipa result...");
 
   await fs.writeFile(
-    "outputs/syllablizedIPA.json",
+    syllabilizedIpaFile,
     JSON.stringify(orderedResult, undefined, 2)
   );
 
-  console.log("creating sonority graph");
-  const graph = createSonorityGraph(orderedResult);
-  console.log();
+  return orderedResult;
+}
 
-  const stringGraphPart = (part: SonorityGraphPart) => {
-    return Object.fromEntries(
-      [...part.entries()].map(([k, v]) => [k == undefined ? null : k, v])
-    );
-  };
-  await fs.writeFile(
-    "outputs/syllableGraph.json",
-    JSON.stringify(
-      {
-        onset: stringGraphPart(graph.parts[0]),
-        vowel: stringGraphPart(graph.parts[1]),
-        coda: stringGraphPart(graph.parts[2]),
-      },
-      undefined,
-      2
-    )
-  );
-  console.log("wrote syllable graph");
+/**
+ * Construct ordered list of syllablized pronunciations
+ * map of word -> IPA split into syllables by |
+ * ordered by usage of the word (common words first)
+ * ['business', [ ["b", "ɪ", "z"], ["n", "ʌ", "s"] ]]
+ * words not in frequency list are appended to the end
+ */
+export async function loadSyllabalizedPronuncations(): Promise<
+  Array<[string, Array<Array<string>>]>
+> {
+  const syllabilizedIpa = await loadSyllabilizedIpa();
+  const graph = await loadSonorityGraph(syllabilizedIpa);
+
+  // const cases = [["b", "l", "u", "l", "b"]];
+  // for (const word of cases) {
+  //   const result = generateSyllableAlternatives(
+  //     word,
+  //     graph,
+  //     new Map(),
+  //     new Set()
+  //   );
+  //   console.log(">> ", word, result);
+  // }
+  // return;
 
   await fs.writeFile(
     "ui/public/syllableGraphDisplayData.json",
@@ -176,12 +196,13 @@ export async function loadSyllabalizedPronuncations(): Promise<
   console.log("wrote graphviz");
 
   // Uncomment this to generate random syllables (takes a few minutes)
-  // console.log("creating lots of random syllables");
   // await bulkGenerateSyllables(graph);
+  console.log("creating lots of random syllables");
+  await bulkGenerateSyllablesWithVariations(graph);
 
   console.log("-----------");
 
-  return orderedResult;
+  return syllabilizedIpa;
 }
 
 async function bulkGenerateSyllables(graph: SonorityGraph) {
@@ -215,4 +236,270 @@ async function bulkGenerateSyllables(graph: SonorityGraph) {
 // Tests / standalone
 if (require.main === module) {
   loadSyllabalizedPronuncations();
+}
+
+export type AlternativeCategory = "plural" | "gerund" | "past" | "actor";
+export type AlternativesForSylalble = {
+  [key in AlternativeCategory]?: Array<string>;
+};
+export const alternants: { [key in AlternativeCategory]: string } = {
+  plural: "z", // bubblez
+  gerund: "ŋ", //bubbing
+  past: "d", // bubbled
+  actor: "ɹ", // bubbler
+};
+
+async function bulkGenerateSyllablesWithVariations(graph: SonorityGraph) {
+  const syllables = new Map<
+    string,
+    { syllable: Array<string>; variations?: AlternativesForSylalble }
+  >();
+  const variations = new Set<string>();
+
+  let numWithVariations = 0;
+  let numWithoutVariations = 0;
+
+  // many attempts with be repeats; 100 million typically generates ~150,000 syllables
+  // which is enough to cover our dictionary.
+  // we get slightly less using variations
+  let N = 100_000_000;
+  for (let j = 0; j < N; j++) {
+    const s = getRandomSyllable(graph);
+    const joined = s.join("");
+    if (syllables.has(joined) || variations.has(joined)) {
+      continue;
+    }
+
+    const result: {
+      syllable: Array<string>;
+      variations?: AlternativesForSylalble;
+    } = { syllable: s };
+    // try to generate variations
+
+    {
+      const foundVariations = generateSyllableAlternatives(
+        s,
+        graph,
+        syllables,
+        variations
+      );
+
+      if (foundVariations) {
+        result.variations = foundVariations;
+        for (const variation of Object.values(foundVariations)) {
+          variations.add(variation.join(""));
+        }
+        numWithVariations++;
+      } else {
+        numWithoutVariations++;
+      }
+    }
+
+    syllables.set(joined, result);
+    if (j % 100 === 0) {
+      process.stdout.write("\u001b[2K");
+      progress(j, N, oneSigFig((100 * j) / N) + "% " + joined);
+    }
+  }
+  console.log();
+  console.log(`created ${syllables.size} unique syllables`);
+  console.log(`${numWithVariations} with variations,`);
+  console.log(`${numWithoutVariations} without.`);
+  console.log("writing random syllables");
+
+  await fs.writeFile(
+    "outputs/random_generated_syllables_with_variations.json",
+    JSON.stringify([...syllables.entries()], undefined, 2)
+  );
+}
+
+const vowelRegex = /(ʌ|æ|u|ɔ|ɪ|ɑ|aɪ|i|oʊ|aʊ|eɪ|ɛɹ|ɛ|ʊ|ɔɪ)/;
+
+/**
+ * Given a randomly generated syllable,
+ * Consider all alternants (plural: add z, past: add d, ...)
+ * Find where the alternant could be inserted to make a valid variation.
+ * Only tries to insert into the coda (so it's like a suffix)
+ *  e.g. "blulb"
+ *   extract coda "lb"
+ *   for each alternant (z, d, ŋ, ɹ)
+ *   find possible insertion points (*lb, l*b, lb*)
+ *   compute probability of putting alternant in that place
+ *   pick variant with highest
+ *   if all 0, that variant is not allowed to exist
+ *
+ * This function also takes the set of existing variants/syllables so it won't
+ * duplicate existing already-generated syllables
+ */
+function generateSyllableAlternatives(
+  syllable: Array<string>,
+  graph: SonorityGraph,
+  syllables: Map<string, unknown>,
+  variations: Set<string>
+): AlternativesForSylalble | undefined {
+  let alternatives: AlternativesForSylalble | undefined = undefined;
+
+  // const log: typeof console.log = console.log;
+  const log: typeof console.log = () => undefined;
+
+  let codaStartIndex = 0;
+  let state = "onset";
+  for (const letter of syllable) {
+    if (state === "onset") {
+      if (vowelRegex.exec(letter)) {
+        state = "vowel";
+      }
+    } else if (state === "vowel") {
+      if (!vowelRegex.exec(letter)) {
+        state = "coda";
+        break;
+      }
+    }
+    codaStartIndex++;
+  }
+  const coda = syllable.slice(codaStartIndex);
+  const onsetAndVowel = syllable.slice(0, codaStartIndex);
+
+  log(syllable.join(""), "parts", onsetAndVowel.join(""), coda.join(""));
+
+  const codaGraph = graph.parts[2];
+
+  // probability counts should be at least this to consider it valid
+  // this helps avoid `zz` and other weird insertions
+  const MIN_SCORE = 2;
+
+  for (const [kind, alternant] of Object.entries(alternants) as Array<
+    [AlternativeCategory, string]
+  >) {
+    // one extra spot at the end
+    // blulb -> lb ->  l b
+    //                0 1 2
+    // e.g.: try to insert 'z'
+    const scores: Array<[number, Array<string>]> = Array(coda.length + 1).fill([
+      0,
+      [],
+    ]);
+
+    log(syllable.join(""), "+", alternant);
+    for (let spot = 0; spot < coda.length + 1; spot++) {
+      if (spot === 0) {
+        // beginning: zlb
+
+        const realization = [...onsetAndVowel, alternant, ...coda];
+        const joinedRealization = realization.join("");
+
+        log("  considering", joinedRealization);
+        if (
+          syllables.has(joinedRealization) ||
+          variations.has(joinedRealization)
+        ) {
+          log("  already realized");
+          // this variant has been used before
+          continue;
+        }
+
+        // possible next steps after starting with the alternant: z->t, z->d, ...
+        const starting = codaGraph.get(alternant);
+        if (starting == null) {
+          log("  not a possible start");
+          continue;
+        }
+
+        // find which next step actually applies
+        const result = starting.find(([next, value]) => next === coda[0]);
+        if (result == null || result[1] <= MIN_SCORE) {
+          log("  not possible to insert continuation");
+          continue;
+        }
+
+        // if it's possible, take this score
+        scores[spot] = [result[1], realization];
+      } else {
+        // between letters: lzb
+        // or end: lbz
+
+        const realization = [
+          ...onsetAndVowel,
+          ...coda.slice(0, spot),
+          alternant,
+          ...coda.slice(spot),
+        ];
+        const joinedRealization = realization.join("");
+
+        log("  considering", joinedRealization);
+        if (
+          syllables.has(joinedRealization) ||
+          variations.has(joinedRealization)
+        ) {
+          log("  already realized");
+          // this variant has been used before
+          continue;
+        }
+
+        const previous = coda[spot - 1];
+        const after = coda[spot]; // undefined at end
+
+        // possible next steps after starting with the previous: l->z, ...
+        const starting = codaGraph.get(previous);
+        if (starting == null) {
+          // should never happen, since we're here now...
+          log("  not a possible start (uh oh)", previous);
+          continue;
+        }
+
+        // find which next step actually applies the alternant
+        // l->z
+        const result = starting?.find(([next, value]) => next === alternant);
+        if (result == null || result[1] <= MIN_SCORE) {
+          log(
+            `  alternant is not possible continuation (${previous} -> ${alternant})`
+          );
+          continue;
+        }
+
+        // additionally, after the alternant we must be able to resume the word
+        let continued = null;
+        if (after != null) {
+          // this is the end
+
+          const continuations = codaGraph.get(alternant);
+          const continued = continuations?.find(
+            ([next, value]) => next === after
+          );
+          if (continued == null || continued[1] <= MIN_SCORE) {
+            log(
+              `  alternant could not be continued by next (${alternant} -> ${after})`
+            );
+            continue;
+          }
+        }
+
+        // if it's possible, take the average score (or just the predecessor on the last letter)
+        scores[spot] = [
+          continued == null ? result[1] : (result[1] + continued[1]) / 2,
+          realization,
+        ];
+
+        log("  score: ", scores[spot][0], scores[spot][1].join(""));
+      }
+    }
+
+    // pick the highest scoring alternant location
+    let max: [number, Array<string>] = [0, []];
+    for (const [score, realization] of scores) {
+      if (score > max[0]) {
+        max = [score, realization];
+      }
+    }
+
+    const [bestScore, realization] = max;
+
+    if (bestScore > 0) {
+      if (alternatives == null) {
+        alternatives = {};
+      }
+      alternatives[kind] = realization;
+    }
+  }
+  return alternatives;
 }

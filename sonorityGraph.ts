@@ -1,5 +1,7 @@
 import * as util from "util";
+import { SyllablizedIPA } from "./syllablize";
 import { progress } from "./util";
+import { promises as fs } from "fs";
 
 /**
  * A graph with three connected subgraphs, corresponding to the parts of a syllable.
@@ -20,11 +22,12 @@ export type SonorityGraph = {
 
 const STOP = null;
 const START = null;
-// letter -> [nextLetter | STOP, count]
-// note: letter may not be in this graph part. if not, look at next graph part.
-// null as next letter means stop
-// null as letter (key in map) means start. (only for onset)
-// null -> [null, count] means how often this graph part is skipped (no onset)
+/** letter -> [nextLetter | STOP, count]
+ * note: letter may not be in this graph part. if not, look at next graph part.
+ * null as next letter means stop
+ * null as letter (key in map) means start. (only for onset)
+ * null -> [null, count] means how often this graph part is skipped (no onset)
+ */
 export type SonorityGraphPart = Map<
   string | typeof START,
   Array<[string | typeof STOP, number]>
@@ -55,6 +58,61 @@ export function createSonorityGraph(
     }
   }
 
+  return graph;
+}
+
+const sonorityGraphFile = "outputs/syllableGraph.json";
+export async function loadSonorityGraph(
+  syllabilizedIpa: SyllablizedIPA
+): Promise<SonorityGraph> {
+  try {
+    const ipa = await fs.readFile(sonorityGraphFile, "utf8");
+    type ObjectGraphPart = { [key: string]: Array<[string, number]> };
+    const result = JSON.parse(ipa) as {
+      onset: ObjectGraphPart;
+      vowel: ObjectGraphPart;
+      coda: ObjectGraphPart;
+    };
+    const graph = {
+      parts: [result.onset, result.vowel, result.coda].map(
+        (part): SonorityGraphPart =>
+          new Map(
+            Object.entries(part).map(([k, v]) => [k === "null" ? null : k, v])
+          ) as SonorityGraphPart
+      ),
+    } as SonorityGraph;
+    console.log("Loaded cached sonority graph");
+    return graph;
+  } catch (err) {
+    return generateSonorityGraph(syllabilizedIpa);
+  }
+}
+
+async function generateSonorityGraph(
+  syllabilizedIpa: SyllablizedIPA
+): Promise<SonorityGraph> {
+  console.log("creating sonority graph");
+  const graph = createSonorityGraph(syllabilizedIpa);
+  console.log();
+
+  const stringGraphPart = (part: SonorityGraphPart) => {
+    return Object.fromEntries(
+      [...part.entries()].map(([k, v]) => [k == undefined ? null : k, v])
+    );
+  };
+  await fs.writeFile(
+    sonorityGraphFile,
+    JSON.stringify(
+      {
+        onset: stringGraphPart(graph.parts[0]),
+        vowel: stringGraphPart(graph.parts[1]),
+        coda: stringGraphPart(graph.parts[2]),
+      },
+      undefined,
+      2
+    )
+  );
+  console.log("wrote syllable graph");
   return graph;
 }
 

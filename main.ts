@@ -3,34 +3,60 @@ import { respellIPA } from "./respellIPA";
 import {
   createSonorityGraph,
   getRandomSyllableFromPallete,
+  loadSonorityGraph,
 } from "./sonorityGraph";
+import {
+  alternants,
+  AlternativeCategory,
+  loadSyllabilizedIpa,
+  SyllablizedIPA,
+} from "./syllablize";
 import { oneSigFig, progress } from "./util";
 
 async function main() {
-  const syllablizedPronuncations = JSON.parse(
-    await fs.readFile("./outputs/syllablizedIPA.json", {
-      encoding: "utf-8",
-    })
-  ) as Array<[string, Array<Array<string>>]>;
+  const syllabilizedIpa = await loadSyllabilizedIpa();
+  const graph = await loadSonorityGraph(syllabilizedIpa);
 
-  const oneSyllable = syllablizedPronuncations.filter(
+  const oneSyllable = syllabilizedIpa.filter(
     ([word, syllalbles]) => syllalbles.length === 1
   );
-  const multiSyllable = syllablizedPronuncations.filter(
+  const multiSyllable = syllabilizedIpa.filter(
     ([word, syllalbles]) => syllalbles.length > 1
   );
 
-  // TODO; we could cache this graph instead of remaking it here
-  console.log("Generating sonority graph...");
-  const graph = createSonorityGraph(syllablizedPronuncations);
-  console.log();
+  const wordSet = new Map<string /*IPA*/, Array<Array<string>>>();
 
-  const randomSyllables = new Map(
+  for (const [_orig, parts] of syllabilizedIpa) {
+    wordSet.set(parts.flatMap((p) => p.join("")).join(""), parts);
+  }
+
+  // const variantTest = (word: string) => {
+  //   console.log(
+  //     word,
+  //     findVariants(wordSet, syllabilizedIpa.find(([name]) => name === word)![1])
+  //   );
+  // };
+  // variantTest("jump");
+  // variantTest("bubble");
+  // return;
+
+  const randomSyllablesWithVariations = new Map(
     JSON.parse(
-      await fs.readFile("./outputs/random_generated_syllables.json", {
-        encoding: "utf-8",
-      })
-    ) as Array<[string, Array<string>]>
+      await fs.readFile(
+        "./outputs/random_generated_syllables_with_variations.json",
+        {
+          encoding: "utf-8",
+        }
+      )
+    ) as Array<
+      [
+        string,
+        {
+          syllable: Array<string>;
+          variations: { [key in AlternativeCategory]: Array<string> };
+        }
+      ]
+    >
   );
 
   let assignResults: Array<boolean> = [];
@@ -38,6 +64,7 @@ async function main() {
   let assignFails = 0;
   type Method =
     | "direct"
+    | "variant"
     | "graph"
     | "choice"
     | "random"
@@ -45,6 +72,7 @@ async function main() {
     | "alreadyOneSyllable";
   const assignMethod: { [key in Method]: number } = {
     direct: 0,
+    variant: 0,
     graph: 0,
     choice: 0,
     random: 0,
@@ -80,17 +108,16 @@ async function main() {
       method != "failed" ? assignSuccesses++ : assignFails++;
     }
     assignResults.push(method != "failed");
-    randomSyllables.delete(joined);
+    randomSyllablesWithVariations.delete(joined);
   };
 
   for (const [word, syll] of oneSyllable) {
     assign(word, syll[0], "alreadyOneSyllable", 1);
   }
   console.log(
-    `${assignMethod.alreadyOneSyllable} / ${syllablizedPronuncations.length} words already one syllable ` +
+    `${assignMethod.alreadyOneSyllable} / ${syllabilizedIpa.length} words already one syllable ` +
       `(${oneSigFig(
-        (100 * assignMethod.alreadyOneSyllable) /
-          syllablizedPronuncations.length
+        (100 * assignMethod.alreadyOneSyllable) / syllabilizedIpa.length
       )}%)`
   );
 
@@ -141,10 +168,13 @@ async function main() {
     {
       let candidates: Array<[Array<string>, number]> = [];
       const phones = new Set(sylls.flat());
-      for (const [joined, randomSyll] of randomSyllables.entries()) {
+      for (const [
+        joined,
+        randomSyll,
+      ] of randomSyllablesWithVariations.entries()) {
         let score = 0;
         let hasAny = false;
-        for (const p of randomSyll) {
+        for (const p of randomSyll.syllable) {
           if (phones.has(p)) {
             hasAny = true;
             score += 10;
@@ -153,8 +183,8 @@ async function main() {
           }
         }
         if (hasAny) {
-          candidates.push([randomSyll, score]);
-          if (score === 10 * randomSyll.length) {
+          candidates.push([randomSyll.syllable, score]);
+          if (score === 10 * randomSyll.syllable.length) {
             // early exit: we found a syllable that got the highest possible score! go for it!
             break;
           }
@@ -173,9 +203,9 @@ async function main() {
       }
 
       // if we didn't find a decent match, just use the first available
-      if (randomSyllables.size > 0) {
-        const [rand] = randomSyllables;
-        assign(word, rand[1], "random", sylls.length);
+      if (randomSyllablesWithVariations.size > 0) {
+        const [rand] = randomSyllablesWithVariations;
+        assign(word, rand[1].syllable, "random", sylls.length);
 
         continue;
       }
@@ -256,3 +286,28 @@ async function main() {
 }
 
 main();
+
+function findVariants(
+  wordSet: Map<string, Array<Array<string>>>,
+  word: Array<Array<string>>
+): { [key in AlternativeCategory]?: Array<Array<string>> } {
+  const result: { [key in AlternativeCategory]?: Array<Array<string>> } = {};
+  const checkAndSet = (which: AlternativeCategory, end: string) => {
+    const combined = JSON.parse(JSON.stringify(word)) as typeof word;
+    combined[combined.length - 1].push(end);
+    const flat = combined.flatMap((w) => w.join("")).join("");
+
+    if (wordSet.has(flat)) {
+      result[which] = wordSet.get(flat); // use the actual word, since syllabilization is unpredictable
+    }
+  };
+  checkAndSet("plural", "z");
+  checkAndSet("plural", "s");
+  checkAndSet("past", "d");
+  checkAndSet("past", "t");
+  checkAndSet("gerund", "ŋ");
+  checkAndSet("gerund", "ɪŋ");
+  checkAndSet("actor", "ɹ");
+  checkAndSet("actor", "ɛɹ");
+  return result;
+}
