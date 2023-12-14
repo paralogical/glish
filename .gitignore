@@ -1,0 +1,6 @@
+node_modules
+.DS_Store
+enwiktionary*
+en_data*
+cmudict*
+en_US_IPA.txt

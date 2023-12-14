@@ -1,0 +1,6 @@
+{"word": "the", "sounds": ["the"]}
+{"word": "and", "sounds": ["and"]}
+{"word": "business", "sounds": ["ˈbɪz.nɪs", "ˈbɪz.nɪz"]}
+{"word": "alligator", "sounds": ["'æl.ɪ.ɡeɪ.tə"]}
+{"word": "sit", "sounds": ["sĭt"]}
+{"word": "situation", "sounds": ["sĭt-yo͞o-ā'shən"]}
