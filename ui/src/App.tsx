@@ -21,7 +21,7 @@ function convert(monosyllabic: MonosyllabicData, text: string): ConvertedText {
   let totalSyllables = 0;
   let syllablesRemoved = 0;
   const converted: ConvertedText["converted"] = text
-    .split(/([ \n\t]+)/)
+    .split(/([ \n\t-]+)/)
     .map((word) => {
       // extract what looks like an english word from text
       // look for sequence of [a-z] characters, to filter ?!,. etc
@@ -30,7 +30,10 @@ function convert(monosyllabic: MonosyllabicData, text: string): ConvertedText {
         // empty string, only punctuation, non-english text etc
         if (word.includes("\n")) {
           return { orig: word, kind: "newline" as const };
+        } else if (word.includes('-')) {
+          return { orig: word, kind: "alreadyOneSyllable" as const };
         }
+
         return { orig: word, kind: "whitespace" as const };
       }
       if (knownUnknownWords.has(word)) {
@@ -39,17 +42,25 @@ function convert(monosyllabic: MonosyllabicData, text: string): ConvertedText {
           kind: "alreadyOneSyllable",
         };
       }
-      const [, prefix, realword, suffix] = match;
-      // monosyllabic dict is keyed by lower case. Output is lowercase IPA anyway,
-      // we don't care about input case
-      const lowerWord = realword.toLowerCase();
+      const [, prefix, realWord, suffix] = match;
+
+      const lowerWord = realWord.toLowerCase();
       const found = monosyllabic.get(lowerWord);
       if (found) {
         const [ipa, respelled, prevNumSyllables] = found;
-        const reconstructed = prefix + respelled + suffix;
+        let reconstructed = prefix + respelled + suffix;
         const isAlreadyOneSyllable = prevNumSyllables === 1;
         totalSyllables += prevNumSyllables;
         syllablesRemoved += prevNumSyllables - 1;
+
+        if (word[0] === word[0].toUpperCase()) {
+            if (word === word.toUpperCase()) {
+                reconstructed = reconstructed.toUpperCase();
+            } else {
+                reconstructed = reconstructed[0].toUpperCase() + reconstructed.slice(1);
+            }
+        }
+
         return {
           orig: word,
           mono: reconstructed,

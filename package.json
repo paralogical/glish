@@ -7,6 +7,11 @@
     "ts-node": "^10.9.1",
     "typescript": "^4.7.4"
   },
+  "scripts": {
+    "buildSyllables": "ts-node syllablize.ts",
+    "buildWords": "ts-node main.ts",
+    "rebuildAll": "ts-node syllablize.ts; ts-node main.ts"
+  },
   "devDependencies": {
     "@types/node": "^18.6.4"
   }
