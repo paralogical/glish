@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 import { sampleText } from "./sampleText";
@@ -18,6 +18,14 @@ type ConvertedText = {
   }>;
 };
 function convert(monosyllabic: MonosyllabicData, text: string): ConvertedText {
+  if (text === "") {
+    return {
+      converted: [],
+      totalSyllables: 0,
+      syllablesRemoved: 0,
+    };
+  }
+
   let totalSyllables = 0;
   let syllablesRemoved = 0;
   const converted: ConvertedText["converted"] = text
@@ -77,6 +85,24 @@ async function fetchMonosyllabicData(): Promise<MonosyllabicData> {
   );
 }
 
+function convertedToStr(converted: ConvertedText["converted"]): string {
+	return converted
+		.map(({ kind, mono, orig }) => {
+			switch (kind) {
+				case "mono":
+					return mono ?? orig;
+				case "unknown":
+				case "alreadyOneSyllable":
+					return orig;
+				case "whitespace":
+					return " ";
+				case "newline":
+					return "\n";
+			}
+		})
+		.join("");
+}
+
 const monosyllabicData = fetchMonosyllabicData();
 
 export function App() {
@@ -94,11 +120,9 @@ export function App() {
 
 function Editor({ monosyllabic }: { monosyllabic: MonosyllabicData }) {
   const [content, setContent] = useState(sampleText);
-  const [convertedWords, setConvertedWords] = useState<ConvertedText>({
-    converted: [],
-    totalSyllables: 0,
-    syllablesRemoved: 0,
-  });
+
+  const trimmedContent = content.trim();
+  const convertedWords = useMemo(() => convert(monosyllabic, trimmedContent), [trimmedContent]);
 
   const [showCopied, setShowCopied] = useState(false);
   useEffect(() => {
@@ -109,8 +133,12 @@ function Editor({ monosyllabic }: { monosyllabic: MonosyllabicData }) {
   }, [showCopied]);
 
   useEffect(() => {
-    setConvertedWords(convert(monosyllabic, content));
-  }, [content]);
+    // effect to stop speech synthesis on refresh
+    const handler = () => window.speechSynthesis?.cancel();
+
+    window.addEventListener("pagehide", handler);
+    return () => window.removeEventListener("pagehide", handler);
+  }, []);
 
   return (
     <div className="App">
@@ -124,7 +152,7 @@ function Editor({ monosyllabic }: { monosyllabic: MonosyllabicData }) {
         <a href="https://www.youtube.com/@paralogical8914">Watch the video</a>
       </div>
 
-      <div className="converted-byline">
+      <div className="converted byline">
         <span>
           {convertedWords.syllablesRemoved} syllables removed (
           {convertedWords.totalSyllables === 0
@@ -137,16 +165,29 @@ function Editor({ monosyllabic }: { monosyllabic: MonosyllabicData }) {
         </span>
         <button
           onClick={() => {
-            const toCopy = convertedWords.converted
-              .map((info) => (info.kind === "mono" ? info.mono : info.orig))
-              .join(" ");
-            navigator.clipboard.writeText(toCopy);
+            const convertedAsStr = convertedToStr(convertedWords.converted);
+
+            navigator.clipboard.writeText(convertedAsStr);
             setShowCopied(true);
           }}
         >
-          Copy Monosyllabic
+        <span className="copy-txt">{showCopied ? 'Copied!' : 'Copy Monosyllabic'}</span>
         </button>
-        {showCopied ? <span>Copied!</span> : null}
+        {window.speechSynthesis && (
+					<button
+						onClick={() => {
+              const convertedAsStr = convertedToStr(convertedWords.converted);
+
+							const utterance = new SpeechSynthesisUtterance(convertedAsStr);
+							utterance.lang = "en-US";
+							utterance.rate = 0.8;
+
+							window.speechSynthesis.speak(utterance);
+						}}
+					>
+						Listen
+					</button>
+				)}
       </div>
 
       <textarea
