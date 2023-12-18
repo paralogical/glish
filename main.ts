@@ -396,7 +396,7 @@ async function main() {
                     ] as [IPA[], number];
 
                     candidates.push(syllableHere);
-                    if (score > 7 * randomSyllable.syllable.length) {
+                    if (score > 8 * randomSyllable.syllable.length) {
                         // early exit: we found a syllable that got a decent score
                         best = [
                             randomSyllable.syllable,
@@ -573,7 +573,7 @@ function scoreForRandomSyllable(
         }
 
         if (foundAtIndex > -1) {
-            bonusHere *= 1 - Math.abs(foundAtIndex / phonemes.length - phonemeIndex / randomSyllable.syllable.length) * 0.3;
+            bonusHere *= 1 - Math.abs(foundAtIndex / phonemes.length - phonemeIndex / randomSyllable.syllable.length) * 0.4;
             score += bonusHere;
         } else {
             score -= 4;

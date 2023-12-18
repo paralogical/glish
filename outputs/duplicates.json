@@ -1,20 +1,29 @@
 [
   [
-    "relearning",
+    "reusing",
     {
-      "mono": "liɹ",
-      "respelled": "leer",
+      "mono": "wið",
+      "respelled": "weedh",
       "method": "variant",
       "numSyllables": 3
     }
   ],
   [
-    "readying",
+    "disregarding",
     {
-      "mono": "ɹɛŋɡ",
-      "respelled": "rengg",
+      "mono": "wɪh",
+      "respelled": "wih",
       "method": "variant",
-      "numSyllables": 3
+      "numSyllables": 4
+    }
+  ],
+  [
+    "discontinued",
+    {
+      "mono": "dʒɪʒ",
+      "respelled": "jizh",
+      "method": "variant",
+      "numSyllables": 4
     }
   ],
   [
@@ -27,21 +36,30 @@
     }
   ],
   [
-    "disconnecting",
+    "retelling",
     {
-      "mono": "nɪh",
-      "respelled": "nih",
+      "mono": "piɹ",
+      "respelled": "peer",
       "method": "variant",
-      "numSyllables": 4
+      "numSyllables": 3
     }
   ],
   [
     "qualifier",
     {
-      "mono": "kiɹɡ",
-      "respelled": "keerg",
+      "mono": "lʌɹɡ",
+      "respelled": "lurg",
       "method": "variant",
       "numSyllables": 4
+    }
+  ],
+  [
+    "discounting",
+    {
+      "mono": "nɪh",
+      "respelled": "nih",
+      "method": "variant",
+      "numSyllables": 3
     }
   ]
 ]
