@@ -1,11 +1,20 @@
 [
   [
-    "discontinued",
+    "relearning",
     {
-      "mono": "wɪh",
-      "respelled": "wih",
+      "mono": "liɹ",
+      "respelled": "leer",
       "method": "variant",
-      "numSyllables": 4
+      "numSyllables": 3
+    }
+  ],
+  [
+    "readying",
+    {
+      "mono": "ɹɛŋɡ",
+      "respelled": "rengg",
+      "method": "variant",
+      "numSyllables": 3
     }
   ],
   [
@@ -18,30 +27,21 @@
     }
   ],
   [
-    "williamsen",
+    "disconnecting",
     {
-      "mono": "lɛnj",
-      "respelled": "leny",
+      "mono": "nɪh",
+      "respelled": "nih",
       "method": "variant",
-      "numSyllables": 3
+      "numSyllables": 4
     }
   ],
   [
-    "disappeared",
+    "qualifier",
     {
-      "mono": "pɪh",
-      "respelled": "pih",
+      "mono": "kiɹɡ",
+      "respelled": "keerg",
       "method": "variant",
-      "numSyllables": 3
-    }
-  ],
-  [
-    "dispersing",
-    {
-      "mono": "tɪʒ",
-      "respelled": "tizh",
-      "method": "variant",
-      "numSyllables": 3
+      "numSyllables": 4
     }
   ]
 ]

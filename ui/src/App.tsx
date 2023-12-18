@@ -25,7 +25,7 @@ function convert(monosyllabic: MonosyllabicData, text: string): ConvertedText {
     .map((word) => {
       // extract what looks like an english word from text
       // look for sequence of [a-z] characters, to filter ?!,. etc
-      const match = /([^a-zA-Z']*)([a-zA-Z']+)(.*)/.exec(word);
+      const match = /([^a-zA-Z0-9']*)([a-zA-Z0-9']+)(.*)/.exec(word);
       if (!match) {
         // empty string, only punctuation, non-english text etc
         if (word.includes("\n")) {
@@ -36,7 +36,7 @@ function convert(monosyllabic: MonosyllabicData, text: string): ConvertedText {
 
         return { orig: word, kind: "whitespace" as const };
       }
-      if (knownUnknownWords.has(word)) {
+      if (knownUnknownWords.has(word) || word.match(/^[0-9]+$/g)) {
         return {
           orig: word,
           kind: "alreadyOneSyllable",

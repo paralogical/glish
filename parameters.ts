@@ -4,10 +4,8 @@ export const parameters = {
     buildSyllables: {
         // many attempts with be repeats; 100 million typically generates ~190,000 syllables
         // which is enough to cover our dictionary
-        generationAttempts: 100000000,
-        // generationAttempts: 100,
+        generationAttempts: 100_000_000,
         wordFrequencyCutoff: 60000,
-        // wordFrequencyCutoff: 60,
     },
     alternatives: {
         alternativeCategories: [

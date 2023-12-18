@@ -9,7 +9,7 @@ export const registerTime = (segment?: number) => {
 
         const elapsedTime = new Date().getTime() - currentStartTime;
         countSegments[currentSegment]++;
-        timingSegments[currentSegment] += elapsedTime * 10000;
+        timingSegments[currentSegment] += elapsedTime * 1000;
 
         total++;
         if (total === 10_000_000) {

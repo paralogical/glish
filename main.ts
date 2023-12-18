@@ -2,12 +2,9 @@ import { promises as fs } from 'fs';
 import { parameters } from './parameters';
 import { respellIPA } from './respellIPA';
 import { getRandomSyllableFromPalette, loadSonorityGraph } from './sonorityGraph';
-import {
-    generateSyllableAlternatives,
-    loadSyllabilizedIpa,
-} from './syllablize';
-import { countSegments, registerTime, timingSegments } from './timing';
-import { AlternativeCategory, IPA, AssignMethod, RandomSyllableInfo, VariantHash } from './types';
+import { generateSyllableAlternatives, loadSyllabilizedIpa } from './syllablize';
+import { registerTime } from './timing';
+import { AlternativeCategory, AssignMethod, IPA, RandomSyllableInfo, VariantHash } from './types';
 import { oneSigFig, progress } from './util';
 
 async function main() {
@@ -234,7 +231,7 @@ async function main() {
                         if (
                             parameters.alternatives.alternativeCategories.some(
                                 c => randomSyllable.variations?.[c] !== null &&
-                                    seen.has(randomSyllable.variations?.[c]?.join('') || '-')
+                                    seen.has(randomSyllable.variations?.[c]?.join('') || '-'),
                             )
                         ) {
                             continue;
@@ -382,28 +379,35 @@ async function main() {
         {
             let candidates: Array<[Array<IPA>, number]> = [];
 
+            let best: [Array<IPA> | undefined, number] = [
+                undefined,
+                -Infinity,
+            ];
+
             for (const [
                 _joined,
                 randomSyllable,
             ] of randomSyllablesWithVariations.entries()) {
                 const score = scoreForRandomSyllable(originalSyllables, randomSyllable);
                 if (score > 0) {
-                    candidates.push([
+                    const syllableHere = [
                         randomSyllable.syllable,
                         score,
-                    ]);
-                    if (score === 10 * randomSyllable.syllable.length) {
-                        // early exit: we found a syllable that got the highest possible score! go for it!
+                    ] as [IPA[], number];
+
+                    candidates.push(syllableHere);
+                    if (score > 7 * randomSyllable.syllable.length) {
+                        // early exit: we found a syllable that got a decent score
+                        best = [
+                            randomSyllable.syllable,
+                            score,
+                        ];
                         break;
                     }
                 }
             }
 
-            if (candidates.length > 0) {
-                let best: [Array<IPA> | undefined, number] = [
-                    undefined,
-                    -Infinity,
-                ];
+            if (candidates.length > 0 && !best[0]) {
                 for (const candidate of candidates) {
                     if (candidate[1] > best[1]) {
                         best = candidate;
@@ -527,28 +531,41 @@ async function main() {
 
 main();
 
+const optimisedSimilarityLookup = Object.fromEntries(
+    Array.from(
+             new Set(
+                 parameters
+                     .IPA
+                     .phonemeSimilarityGroups
+                     .flat(),
+             ),
+         )
+         .map(e => [
+             e,
+             new Set(
+                 parameters.IPA.phonemeSimilarityGroups.filter(t => t.includes(e)).flat(),
+             ),
+         ]),
+);
+
 function scoreForRandomSyllable(
     syllables: Array<Array<IPA>>,
     randomSyllable: RandomSyllableInfo,
 ): number {
     const phonemes = syllables.flat();
     let score = 0;
-    for (let phonemeIndex = 0; phonemeIndex < randomSyllable.syllable.length; phonemeIndex++){
-        const p = randomSyllable.syllable[phonemeIndex];
-        let foundAtIndex = phonemes.indexOf(p)
 
+    for (let phonemeIndex = 0; phonemeIndex < randomSyllable.syllable.length; phonemeIndex++) {
+        const p = randomSyllable.syllable[phonemeIndex];
+        let foundAtIndex = phonemes.indexOf(p);
+
+        let bonusHere = 0;
         if (foundAtIndex > -1) {
-            score += 10;
+            bonusHere = 10;
         } else {
-            for (let i = 0; i < phonemes.length; i++){
-                if (
-                    parameters
-                        .IPA
-                        .phonemeSimilarityGroups
-                        .filter(e => e.includes(p))
-                        .some(t => t.includes(phonemes[i]))
-                ) {
-                    score += 4
+            for (let i = 0; i < phonemes.length; i++) {
+                if (optimisedSimilarityLookup[p]?.has(phonemes[i])) {
+                    bonusHere = 4;
                     foundAtIndex = i;
                     break;
                 }
@@ -556,7 +573,8 @@ function scoreForRandomSyllable(
         }
 
         if (foundAtIndex > -1) {
-            score *= randomSyllable.syllable.length / (Math.abs(foundAtIndex - phonemeIndex) + 1);
+            bonusHere *= 1 - Math.abs(foundAtIndex / phonemes.length - phonemeIndex / randomSyllable.syllable.length) * 0.3;
+            score += bonusHere;
         } else {
             score -= 4;
         }
