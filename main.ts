@@ -125,7 +125,7 @@ async function main() {
     for (const [word, syllables] of oneSyllable) {
         assign(word, syllables[0], 'alreadyOneSyllable', 1);
         // a one-syllable word may also have multi-syllable variants,
-        // eg. jump + jumping
+        // e.g. jump + jumping
         // we should try to assign these variants to be related to the original one-syllable word.
         // const variants = findVariants(ipaWordSet, syllables);
         const variants = findEnglishVariants(syllabilizedLookup, word);
@@ -293,6 +293,8 @@ async function main() {
         }
     }
 
+    const sortedCutoffs = parameters.buildWords.choiceCutoffThresholds.sort((a, b) => b[0] - a[0]);
+
     console.log('Assigning words without variants...');
     let i = 0;
     for (const [originalWord, originalSyllables] of multiSyllable) {
@@ -384,6 +386,9 @@ async function main() {
                 -Infinity,
             ];
 
+            const proportion = i / multiSyllable.length;
+            const [, cutoffHere] = sortedCutoffs.find(e => proportion > e[0])!;
+
             for (const [
                 _joined,
                 randomSyllable,
@@ -396,21 +401,20 @@ async function main() {
                     ] as [IPA[], number];
 
                     candidates.push(syllableHere);
-                    if (score > 8 * randomSyllable.syllable.length) {
+                    if (score > cutoffHere * randomSyllable.syllable.length) {
                         // early exit: we found a syllable that got a decent score
-                        best = [
-                            randomSyllable.syllable,
-                            score,
-                        ];
+                        best = syllableHere;
                         break;
                     }
                 }
             }
 
-            if (candidates.length > 0 && !best[0]) {
-                for (const candidate of candidates) {
-                    if (candidate[1] > best[1]) {
-                        best = candidate;
+            if (candidates.length > 0) {
+                if (!best[0]) {
+                    for (const candidate of candidates) {
+                        if (candidate[1] > best[1]) {
+                            best = candidate;
+                        }
                     }
                 }
 
@@ -561,11 +565,11 @@ function scoreForRandomSyllable(
 
         let bonusHere = 0;
         if (foundAtIndex > -1) {
-            bonusHere = 10;
+            bonusHere = parameters.buildWords.syllableScoring.perfectMatch;
         } else {
             for (let i = 0; i < phonemes.length; i++) {
                 if (optimisedSimilarityLookup[p]?.has(phonemes[i])) {
-                    bonusHere = 4;
+                    bonusHere = parameters.buildWords.syllableScoring.similarMatch;
                     foundAtIndex = i;
                     break;
                 }
@@ -573,10 +577,10 @@ function scoreForRandomSyllable(
         }
 
         if (foundAtIndex > -1) {
-            bonusHere *= 1 - Math.abs(foundAtIndex / phonemes.length - phonemeIndex / randomSyllable.syllable.length) * 0.4;
+            bonusHere *= 1 - Math.abs(foundAtIndex / phonemes.length - phonemeIndex / randomSyllable.syllable.length) * parameters.buildWords.syllableScoring.orderPunishmentFraction;
             score += bonusHere;
         } else {
-            score -= 4;
+            score += parameters.buildWords.syllableScoring.missing;
         }
     }
     return score;

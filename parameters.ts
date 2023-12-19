@@ -7,6 +7,19 @@ export const parameters = {
         generationAttempts: 100_000_000,
         wordFrequencyCutoff: 60000,
     },
+    buildWords: {
+        choiceCutoffThresholds: [
+            [0, 8],
+            [0.2, 7],
+            [0.3, 6],
+        ] as [number, number][],
+        syllableScoring: {
+            perfectMatch: 10,
+            similarMatch: 7,
+            missing: -4,
+            orderPunishmentFraction: 0.4,
+        }
+    },
     alternatives: {
         alternativeCategories: [
             'past',

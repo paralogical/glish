@@ -403,7 +403,7 @@ export function getRandomSyllableFromPalette(
         next = randomTilLegal(graphPart.get(next)!);
     }
 
-    if (word.length < 2) {
+    if (word.length < 2 || currentPart < 2) {
         return null;
     }
 
