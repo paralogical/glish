@@ -150,7 +150,7 @@ function Editor({ monosyllabic }: { monosyllabic: MonosyllabicData }) {
           onClick={() => {
             const toCopy = convertedWords.converted
               .map((info) => (info.kind === "mono" ? info.mono : info.orig))
-              .join(" ");
+              .join("");
             navigator.clipboard.writeText(toCopy);
             setShowCopied(true);
           }}
