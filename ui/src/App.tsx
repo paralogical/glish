@@ -121,7 +121,7 @@ function Editor({ monosyllabic }: { monosyllabic: MonosyllabicData }) {
       </h1>
 
       <div className="converted-byline">
-        <a href="https://www.youtube.com/@paralogical8914">Watch the video</a>
+        <a href="https://youtu.be/sRbcw2sGkJw">Watch the video</a>
       </div>
 
       <div className="converted-byline">
