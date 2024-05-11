@@ -1,0 +1,65 @@
+[
+  [
+    "reusing",
+    {
+      "mono": "wið",
+      "respelled": "weedh",
+      "method": "variant",
+      "numSyllables": 3
+    }
+  ],
+  [
+    "disregarding",
+    {
+      "mono": "wɪh",
+      "respelled": "wih",
+      "method": "variant",
+      "numSyllables": 4
+    }
+  ],
+  [
+    "discontinued",
+    {
+      "mono": "dʒɪʒ",
+      "respelled": "jizh",
+      "method": "variant",
+      "numSyllables": 4
+    }
+  ],
+  [
+    "identifying",
+    {
+      "mono": "ɛŋɡ",
+      "respelled": "engg",
+      "method": "variant",
+      "numSyllables": 5
+    }
+  ],
+  [
+    "retelling",
+    {
+      "mono": "piɹ",
+      "respelled": "peer",
+      "method": "variant",
+      "numSyllables": 3
+    }
+  ],
+  [
+    "qualifier",
+    {
+      "mono": "lʌɹɡ",
+      "respelled": "lurg",
+      "method": "variant",
+      "numSyllables": 4
+    }
+  ],
+  [
+    "discounting",
+    {
+      "mono": "nɪh",
+      "respelled": "nih",
+      "method": "variant",
+      "numSyllables": 3
+    }
+  ]
+]
