@@ -67,7 +67,7 @@ function convert(monosyllabic: MonosyllabicData, text: string): ConvertedText {
 }
 
 async function fetchMonosyllabicData(): Promise<MonosyllabicData> {
-  const data = await fetch("/monosyllabic.json");
+  const data = await fetch("./monosyllabic.json");
   const json = await data.json();
   console.log("got data:", json);
   return new Map(
@@ -87,7 +87,7 @@ export function App() {
     monosyllabicData.then(setMonosyllabic);
   }, []);
   if (monosyllabic == null) {
-    return <div>"loading"</div>;
+    return <div>loading</div>;
   }
   return <Editor monosyllabic={monosyllabic} />;
 }
@@ -122,6 +122,8 @@ function Editor({ monosyllabic }: { monosyllabic: MonosyllabicData }) {
 
       <div className="converted-byline">
         <a href="https://youtu.be/sRbcw2sGkJw">Watch the video</a>
+        &middot;
+        <a href="https://github.com/paralogical/glish">GitHub</a>
       </div>
 
       <div className="converted-byline">

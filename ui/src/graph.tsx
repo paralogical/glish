@@ -21,6 +21,7 @@ async function fetchGraphData(): Promise<vis.Data> {
   start!.x = 0;
   start!.y = 300;
   start!.fixed = true;
+  // @ts-ignore
   start!.group = 4;
 
   const end = nodes.find((n) => n.label == "End");
@@ -34,9 +35,11 @@ async function fetchGraphData(): Promise<vis.Data> {
     fixed: true,
     x: 1000,
     y: 300,
+    // @ts-ignore
     group: 1,
     font: {
       size: 65,
+      // @ts-ignore
       bold: true,
     },
   });
@@ -46,9 +49,11 @@ async function fetchGraphData(): Promise<vis.Data> {
     fixed: true,
     x: 2000,
     y: 300,
+    // @ts-ignore
     group: 2,
     font: {
       size: 65,
+      // @ts-ignore
       bold: true,
     },
   });
@@ -58,15 +63,20 @@ async function fetchGraphData(): Promise<vis.Data> {
     fixed: true,
     x: 3000,
     y: 300,
+    // @ts-ignore
     group: 3,
     font: {
       size: 65,
+      // @ts-ignore
       bold: true,
     },
   });
 
+  // @ts-ignore
   const onsets = nodes.filter((n) => n.group == 1);
+  // @ts-ignore
   const vowels = nodes.filter((n) => n.group == 2);
+  // @ts-ignore
   const codas = nodes.filter((n) => n.group == 3);
 
   (json.edges as Array<vis.Edge>).push(
@@ -117,6 +127,7 @@ function Graph({ data }: { data: vis.Data }) {
   useEffect(() => {
     if (ref.current) {
       const network = new vis.Network(ref.current, data, {
+        // @ts-ignore
         edges: { smooth: { forceDirection: "none" } },
         physics: {
           forceAtlas2Based: {
