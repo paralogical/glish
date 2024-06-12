@@ -2,6 +2,8 @@
 
 Watch the video about this project: https://youtu.be/sRbcw2sGkJw
 
+Interactive Demo Translator tool here: https://paralogical.dev/glish/
+
 **Goal: Make a version of English where every word is only one syllable**
 
 Inputs:
