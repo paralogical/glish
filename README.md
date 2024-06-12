@@ -1,5 +1,7 @@
 # Glish
 
+Watch the video about this project: https://youtu.be/sRbcw2sGkJw
+
 **Goal: Make a version of English where every word is only one syllable**
 
 Inputs:
@@ -18,9 +20,11 @@ Stages:
 - `respellIPA.ts` &rarr; convert IPA back into "readable" latin alphabet.
 
 To run code to generate Glish language mapping,
+
 - `ts-node syllablize.ts` to generate outputs/syllablizedIPA.json + syllableGraph + big list of randomly generated syllables
 - `ts-node main.ts` to generate outputs/monosyllabic.json & other monosyllabic results
 
 To run UI,
+
 - `cd ui`
 - `npm run dev`
