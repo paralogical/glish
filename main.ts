@@ -14,6 +14,35 @@ import {
   SyllablizedIPA,
 } from "./syllablize";
 import { oneSigFig, progress } from "./util";
+import { parse } from "ts-command-line-args";
+
+const all_features = ['homonyms'] as const
+type Feature = typeof all_features[number]
+
+interface IMainArgs {
+  features?: string[]; // this `string` rather than `Feature` so that `parse`'s `ParseOptions` can compute over it.
+  help?: boolean;
+}
+
+const args = parse<IMainArgs>(
+  {
+    'features': { 'type': String, 'multiple': true, 'optional': true, 'description': `Which features to enable. Available features: ${all_features.join(", ")}` },
+    'help': { 'type': Boolean, 'optional': true }
+  },
+  {
+    'helpArg': 'help',
+  }
+)
+
+// Ensure that the `features` in `args` are known features.
+const features = new Set(args.features?.map((s) => {
+  const f = s as Feature;
+  if (!all_features.includes(f)) throw new Error(`Unknown feature: "${s}". Available features: ${all_features.join(", ")}`)
+  return f
+}) ?? []);
+
+console.log(features);
+process.exit()
 
 async function main() {
   const syllabilizedIpa = await loadSyllabilizedIpa();
@@ -236,23 +265,25 @@ async function main() {
             if (randomSyll == null) {
               continue;
             }
-            if (seen.has(randomSyll.syllable.join(""))) {
-              continue;
-            }
-            // if any variant is already being used, try a new random syllable.
-            // this makes it less likely we'll use the variant,
-            // but we'd rather have it match and not cause duplicates.
-            if (
-              (randomSyll.variations?.actor != null &&
-                seen.has(randomSyll.variations?.actor?.join(""))) ||
-              (randomSyll.variations?.past != null &&
-                seen.has(randomSyll.variations?.past?.join(""))) ||
-              (randomSyll.variations?.plural != null &&
-                seen.has(randomSyll.variations?.plural?.join(""))) ||
-              (randomSyll.variations?.gerund != null &&
-                seen.has(randomSyll.variations?.gerund?.join("")))
-            ) {
-              continue;
+            if (!features.has('homonyms')) {
+              if (seen.has(randomSyll.syllable.join(""))) {
+                continue;
+              }
+              // if any variant is already being used, try a new random syllable.
+              // this makes it less likely we'll use the variant,
+              // but we'd rather have it match and not cause duplicates.
+              if (
+                (randomSyll.variations?.actor != null &&
+                  seen.has(randomSyll.variations?.actor?.join(""))) ||
+                (randomSyll.variations?.past != null &&
+                  seen.has(randomSyll.variations?.past?.join(""))) ||
+                (randomSyll.variations?.plural != null &&
+                  seen.has(randomSyll.variations?.plural?.join(""))) ||
+                (randomSyll.variations?.gerund != null &&
+                  seen.has(randomSyll.variations?.gerund?.join("")))
+              ) {
+                continue;
+              }
             }
             const score = scoreForRandomSyllable(sylls, randomSyll);
             if (score > 0) {
@@ -336,7 +367,7 @@ async function main() {
 
     // try to use any syllable directly
     {
-      const firstunused = sylls.find((syll) => !seen.has(syll.join("")));
+      const firstunused = sylls.find((syll) => features.has('homonyms') || !seen.has(syll.join("")));
       if (firstunused != null) {
         assign(word, firstunused, "direct", sylls.length);
         continue;
@@ -352,7 +383,7 @@ async function main() {
       let assinedWithRandom = false;
       for (let i = 0; i < 1000; i++) {
         const generatedSyl = getRandomSyllableFromPallete(graph, sylls.flat());
-        if (generatedSyl && !seen.has(generatedSyl.join(""))) {
+        if (generatedSyl && (features.has('homonyms') || !seen.has(generatedSyl.join("")))) {
           assign(word, generatedSyl, "graph", sylls.length);
           assinedWithRandom = true;
           break;
@@ -420,7 +451,7 @@ async function main() {
   );
 
   // sanity check that there's no duplicates
-  {
+  if (!features.has('homonyms')) {
     const seenIpa = new Set();
     let duplicates: Array<[string, Assignment]> = [];
     console.log("Testing if there are duplicates...");
