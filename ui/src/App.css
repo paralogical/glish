@@ -1,7 +1,6 @@
 #root {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 2rem;
 }
 
 textarea {
@@ -23,16 +22,38 @@ textarea {
   gap: 20px 20px;
 
   width: min(1000px, 90vw);
+  padding: 1rem;
 }
 
 .glish-arrow {
   position: absolute;
   left: -2ch;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+
+.to-english .glish-arrow {
+  transform: rotate(180deg);
+}
+
+.to-english .input {
+  grid-area: 3 / 2;
+}
+
+.to-english .result {
+  grid-area: 3 / 1;
+}
+
+.legend {
+  margin: 20px;
+  display: flex;
+  flex-direction: column;
+  grid-column: 1 / 3;
 }
 
 @media screen and (max-width: 600px) {
   .App {
-    grid-template-columns: 100%;
+    grid-template-columns: 1fr;
     grid-template-rows: min-content min-content 1fr;
   }
   textarea.input {
@@ -44,6 +65,17 @@ textarea {
   }
   h1 {
     margin: 5px;
+  }
+  .legend {
+    grid-column: 1;
+  }
+
+  .to-english .input {
+    grid-area: 6 / 1;
+  }
+
+  .to-english .result {
+    grid-area: 5 / 1;
   }
 }
 
@@ -57,13 +89,16 @@ textarea {
   src: url("../Virgil.woff2") format("woff2");
 }
 
-.legend {
-  margin: 20px;
-  display: flex;
-  flex-direction: column;
-}
 .english-input {
   width: 100%;
+}
+
+.banner {
+  background-color: #ffdddd;
+  margin: 5px 0;
+  padding: 5px 15px;
+  font-size: 90%;
+  border-radius: 10px;
 }
 
 .header {
@@ -135,4 +170,5 @@ h1 {
   align-items: center;
   gap: 10px;
   margin-block: 10px;
+  flex-wrap: wrap;
 }
