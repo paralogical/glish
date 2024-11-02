@@ -25,6 +25,7 @@ type ConvertedText = {
 
 enum Direction {
   toGlish,
+  toGlishIPA,
   toEnglish,
 }
 
@@ -58,9 +59,11 @@ function convert(
       // monosyllabic dict is keyed by lower case. Output is lowercase IPA anyway,
       // we don't care about input case
       const lowerWord = realword.toLowerCase();
-      const found = (direction === Direction.toGlish ? maps[0] : maps[1]).get(
-        lowerWord
-      );
+      const found = (
+        direction === Direction.toGlish || direction === Direction.toGlishIPA
+          ? maps[0]
+          : maps[1]
+      ).get(lowerWord);
       if (direction === Direction.toEnglish) {
         const foundInEnglish = maps[0].get(lowerWord);
         if (foundInEnglish) {
@@ -74,7 +77,10 @@ function convert(
       }
       if (found) {
         const [ipa, respelled, prevNumSyllables] = found;
-        const reconstructed = prefix + respelled + suffix;
+        const reconstructed =
+          prefix +
+          (direction === Direction.toGlishIPA ? ipa : respelled) +
+          suffix;
         const isAlreadyOneSyllable = prevNumSyllables === 1;
         totalSyllables += prevNumSyllables;
         syllablesRemoved += prevNumSyllables - 1;
@@ -151,7 +157,9 @@ function Editor({ maps }: { maps: [EnglishToGlishMap, GlishToEnglishMap] }) {
   return (
     <div
       className={`App ${
-        direction === Direction.toGlish ? "to-glish" : "to-english"
+        direction === Direction.toGlish || direction === Direction.toGlishIPA
+          ? "to-glish"
+          : "to-english"
       }`}
     >
       {" "}
@@ -167,13 +175,17 @@ function Editor({ maps }: { maps: [EnglishToGlishMap, GlishToEnglishMap] }) {
         <button
           onClick={() => {
             setDirection(
-              direction === Direction.toGlish
+              direction === Direction.toGlish ||
+                direction === Direction.toGlishIPA
                 ? Direction.toEnglish
                 : Direction.toGlish
             );
 
             setContent(
-              convertedWords.converted
+              (direction === Direction.toGlishIPA
+                ? convert(maps, content, Direction.toGlish)
+                : convertedWords
+              ).converted
                 .map((info) => (info.kind === "mono" ? info.mono : info.orig))
                 .join("")
             );
@@ -185,7 +197,10 @@ function Editor({ maps }: { maps: [EnglishToGlishMap, GlishToEnglishMap] }) {
       <div className="converted-byline">
         <span>
           {convertedWords.syllablesRemoved} syllables{" "}
-          {direction === Direction.toGlish ? "removed" : "added"} (
+          {direction === Direction.toGlish || direction === Direction.toGlishIPA
+            ? "removed"
+            : "added"}{" "}
+          (
           {convertedWords.totalSyllables === 0
             ? 0
             : oneSigFig(
@@ -212,28 +227,45 @@ function Editor({ maps }: { maps: [EnglishToGlishMap, GlishToEnglishMap] }) {
         className="input"
         onChange={(e) => setContent(e.target.value)}
       />
-      <div className="result">
-        {convertedWords.converted.map(({ kind, mono, orig }) => {
-          switch (kind) {
-            case "mono":
-              return (
-                <span className="contain">
-                  <span className={`translated ${kind}`}>{mono ?? orig}</span>
-                  <span className="orig">{orig}</span>
-                </span>
+      <div className="result-container">
+        <div className="result">
+          {convertedWords.converted.map(({ kind, mono, orig }) => {
+            switch (kind) {
+              case "mono":
+                return (
+                  <span className="contain">
+                    <span className={`translated ${kind}`}>{mono ?? orig}</span>
+                    <span className="orig">{orig}</span>
+                  </span>
+                );
+              case "unknown":
+              case "alreadyOneSyllable":
+                return <span className={`translated ${kind}`}>{orig}</span>;
+              case "whitespace":
+                return null;
+              case "newline":
+                return <span className={`translated ${kind}`}>{orig}</span>;
+            }
+          })}
+        </div>
+        {direction === Direction.toGlish ||
+        direction === Direction.toGlishIPA ? (
+          <button
+            onClick={() => {
+              setDirection(
+                direction === Direction.toGlish
+                  ? Direction.toGlishIPA
+                  : Direction.toGlish
               );
-            case "unknown":
-            case "alreadyOneSyllable":
-              return <span className={`translated ${kind}`}>{orig}</span>;
-            case "whitespace":
-              return null;
-            case "newline":
-              return <span className={`translated ${kind}`}>{orig}</span>;
-          }
-        })}
+            }}
+          >
+            Show {direction === Direction.toGlishIPA ? "respelled" : "IPA"}
+          </button>
+        ) : null}
       </div>
       <div className="legend">
-        {direction === Direction.toGlish ? null : (
+        {direction === Direction.toGlish ||
+        direction === Direction.toGlishIPA ? null : (
           <div className="banner">
             <b>Note:</b> Some Glish words are respelled to match an existing
             English word, which causes the reverse translator to sometimes not

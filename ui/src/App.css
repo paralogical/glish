@@ -123,6 +123,14 @@ h1 {
   flex-wrap: wrap;
   height: min-content;
 }
+.result-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.result-container button {
+  align-self: flex-end;
+}
 .input,
 .result {
   font-size: 18pt;
